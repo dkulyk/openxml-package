@@ -38,7 +38,7 @@ Compare single-part deletion loops with the batch removal helpers (three-run
 medians, with construction excluded):
 
 ```shell
-XDEBUG_MODE=off php tools/benchmark-removal.php
+XDEBUG_MODE=off composer benchmark-removal
 ```
 
 Run the optional LibreOffice interoperability test with:

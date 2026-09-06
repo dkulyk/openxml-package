@@ -438,11 +438,15 @@ $results = $package->removePartsAndRelationships([
 ```
 
 Both methods check all input names and resolve internal relationship targets
-before removing anything. `removeParts()` rejects any referenced selected part,
-including references from another selected part. Use
-`removePartsAndRelationships()` to explicitly remove those references, including
-cycles and self-references. External relationships are not inbound part references.
-Deleting a source part still removes its entire relationship part.
+before removing anything. `removeParts()` rejects a selected part that anything
+outside the batch still references. A reference from another part in the same
+batch does not block removal: that part's relationship part goes with it, so
+nothing is left pointing at the target. This keeps a batch equivalent to the loop
+of single removals it replaces, and unlike that loop the outcome does not depend
+on the order of the names. Use `removePartsAndRelationships()` to remove
+references held by parts the package keeps, including cycles and self-references.
+External relationships are not inbound part references. Deleting a source part
+still removes its entire relationship part.
 
 Equivalent names, including case variants, are removed once. Cascading results
 use stored part names and follow the first occurrence of each name in the input;

@@ -43,13 +43,59 @@ final class BulkPartRemovalTest extends TestCase
             self::fail('Expected a referenced part to reject the complete batch.');
         } catch (PartInUseException $exception) {
             self::assertSame('/second.xml', $exception->partName);
-            self::assertCount(2, $exception->getReferences());
+            // The reference from /first.xml goes away with /first.xml, so only the
+            // package-level one blocks the batch and only it is reported.
+            $references = $exception->getReferences();
+            self::assertCount(1, $references);
+            self::assertNull($references[0]->sourcePartName);
         }
 
         self::assertTrue($package->hasPart('/first.xml'));
         self::assertTrue($package->hasPart('/second.xml'));
         self::assertCount(1, $package->getRelationships());
         self::assertCount(1, $package->getRelationships('/first.xml'));
+    }
+
+    public function testBatchIgnoresReferencesFromPartsItAlsoRemoves(): void
+    {
+        $package = OpenXmlPackage::create();
+        $package->addPart('/first.xml', 'application/xml', '<first/>');
+        $package->addPart('/second.xml', 'application/xml', '<second/>');
+        $package->addPart('/third.xml', 'application/xml', '<third/>');
+        // A chain and a cycle, all inside the batch.
+        $package->getRelationships('/first.xml')->create('urn:second', 'second.xml', id: 'a');
+        $package->getRelationships('/second.xml')->create('urn:first', 'first.xml', id: 'b');
+        $package->getRelationships('/second.xml')->create('urn:third', 'third.xml', id: 'c');
+
+        // The same removals one at a time succeed in this order, so the batch must too.
+        $package->removeParts(['/first.xml', '/second.xml', '/third.xml']);
+
+        self::assertFalse($package->hasPart('/first.xml'));
+        self::assertFalse($package->hasPart('/second.xml'));
+        self::assertFalse($package->hasPart('/third.xml'));
+    }
+
+    public function testBatchStillRejectsAReferenceFromAPartItKeeps(): void
+    {
+        $package = OpenXmlPackage::create();
+        $package->addPart('/keeper.xml', 'application/xml', '<keeper/>');
+        $package->addPart('/first.xml', 'application/xml', '<first/>');
+        $package->addPart('/second.xml', 'application/xml', '<second/>');
+        $package->getRelationships('/first.xml')->create('urn:second', 'second.xml', id: 'a');
+        $package->getRelationships('/keeper.xml')->create('urn:second', 'second.xml', id: 'b');
+
+        try {
+            $package->removeParts(['/first.xml', '/second.xml']);
+            self::fail('Expected a reference from a part outside the batch to reject it.');
+        } catch (PartInUseException $exception) {
+            self::assertSame('/second.xml', $exception->partName);
+            // Only the reference that actually blocks removal is reported.
+            $references = $exception->getReferences();
+            self::assertCount(1, $references);
+            self::assertSame('/keeper.xml', $references[0]->sourcePartName);
+        }
+
+        self::assertTrue($package->hasPart('/second.xml'));
     }
 
     /** @return iterable<string, array{string, bool}> */

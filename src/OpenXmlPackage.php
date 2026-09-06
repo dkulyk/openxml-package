@@ -350,9 +350,25 @@ final class OpenXmlPackage implements PackageInterface
     public function removeParts(array $names): void
     {
         $referencesByPart = $this->collectInboundRelationships($names);
+        $batch = [];
+        foreach (array_keys($referencesByPart) as $name) {
+            $batch[strtolower($name)] = true;
+        }
+
         foreach ($referencesByPart as $name => $references) {
-            if ($references !== []) {
-                throw new PartInUseException($name, $references);
+            // A reference from a part the same batch removes is not what blocks
+            // removal: that part's relationship part goes with it, so nothing is
+            // left pointing here. Rejecting it would make the batch stricter than
+            // the loop of single removals it replaces, where deleting the source
+            // first succeeds. Ignoring it also makes the batch order-independent,
+            // which that loop is not.
+            $blocking = array_values(array_filter(
+                $references,
+                static fn(RelationshipReference $reference): bool => $reference->sourcePartName === null
+                    || !isset($batch[strtolower($reference->sourcePartName)]),
+            ));
+            if ($blocking !== []) {
+                throw new PartInUseException($name, $blocking);
             }
         }
 

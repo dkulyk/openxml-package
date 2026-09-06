@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file. The format 
   loop of single removals it replaces accepts, whatever the order of the names.
   `PackageInterface` is unchanged.
 
+### Changed
+
+- Opening a stream for file-backed staged part contents now uses an independent
+  read-only handle to the existing temporary file instead of copying the payload.
+  Open readers retain their snapshot across part replacement, removal, moves,
+  saves, and package release; the file is cleaned up after its last owner releases it.
+
 ## [0.9.0] - 2026-09-05
 
 ### Added

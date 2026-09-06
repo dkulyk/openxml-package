@@ -165,6 +165,13 @@ until `fclose()` or resource destruction, so it remains usable if the caller's
 package variable is released. Multiple simultaneous streams from the same
 package share one open ZIP archive.
 
+Parts staged from a stream or file path use a package-owned temporary file.
+Opening a reader reopens that file read-only with its own cursor; it does not
+copy the payload again. The snapshot stays alive until both the package and all
+its readers release it. An already-open reader therefore keeps its original
+contents after the part is replaced, moved, removed, or saved, or the package is
+discarded or released. String-backed staged parts still use independent copies.
+
 Streams guarantee sequential reading but are not guaranteed to be seekable;
 seekability depends on the ZIP entry and runtime. Use `getLocalPath()` when a
 consumer requires random access. Use `getContents()` and `setContents()` for

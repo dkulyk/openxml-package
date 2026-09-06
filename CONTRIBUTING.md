@@ -41,6 +41,12 @@ medians, with construction excluded):
 XDEBUG_MODE=off composer benchmark-removal
 ```
 
+Measure opening staged file readers separately from staging and full reads:
+
+```shell
+XDEBUG_MODE=off composer benchmark-staged-streams
+```
+
 Run the optional LibreOffice interoperability test with:
 
 ```shell

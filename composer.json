@@ -50,6 +50,7 @@
         "test": "phpunit",
         "benchmark": "php tools/benchmark.php",
         "benchmark-removal": "php tools/benchmark-removal.php",
+        "benchmark-staged-streams": "php tools/benchmark-staged-streams.php",
         "lint": "php tools/lint.php",
         "analyse": "phpstan analyse --no-progress --debug --memory-limit=512M",
         "format": "php-cs-fixer fix --sequential --allow-unsupported-php-version=yes --verbose",

@@ -234,9 +234,11 @@ final class ZipContainer implements ContainerInterface
         if (isset($this->staged[$name])) {
             $staged = $this->resolveStaged($name);
 
-            // A file-backed staged part already has a readable path; a string-backed
-            // one would have to be written out first, which is materialization.
-            return $staged instanceof StagedContents ? $staged->path($name) : null;
+            // Only a part staged from a caller's own file has a path that outlives
+            // the staging: a temporary file is released as soon as the part is
+            // replaced, and callers are promised a path that stays valid for the
+            // life of the package. Those are materialized instead.
+            return $staged instanceof StagedPath ? $staged->path($name) : null;
         }
         $sourceFilename = $this->sourceFilename;
         if ($sourceFilename === null) {

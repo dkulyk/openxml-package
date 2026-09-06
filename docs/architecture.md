@@ -43,13 +43,21 @@ container's lifetime.
 `SourceFileState` records the file identity, size, and timestamps while a
 package is opened. Lazy reads, the deferred reopen after a save, and an
 in-place save immediately before atomic replacement all compare that metadata;
-the package never hashes its source or output.
+the package never hashes its source or output. A part added from a local path
+records the same metadata for that file, which the package reads in place
+instead of copying.
+
+Staged contents that live in a file are held behind `StagedContents`: a
+`StagedFile` owns a temporary file copied from a stream, a `StagedPath` refers to
+a file the caller owns. Both open independent read handles rather than copying
+the payload again, and a `StagedFile` outlives the part it was staged for as long
+as a reader holds it.
 
 Unchanged ZIP-backed parts can expose a native `zip://` URI to deferred
-path-based consumers. When an entry is staged or a local path is required, the
-internal materialization pool copies it to private temporary storage. This pool
-is an implementation detail: callers receive ordinary strings, and the package
-owns their lifetime.
+path-based consumers, and a part staged from a local path exposes that path. When
+neither applies, the internal materialization pool copies the entry to private
+temporary storage. This pool is an implementation detail: callers receive
+ordinary strings, and the package owns their lifetime.
 
 The internal boundary allows container infrastructure to move into a shared
 package later if ODF or another format demonstrates a real common abstraction. No

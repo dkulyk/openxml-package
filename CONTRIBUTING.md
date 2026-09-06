@@ -34,6 +34,13 @@ Run the package benchmark with:
 composer benchmark
 ```
 
+Compare single-part deletion loops with the batch removal helpers (three-run
+medians, with construction excluded):
+
+```shell
+XDEBUG_MODE=off php tools/benchmark-removal.php
+```
+
 Run the optional LibreOffice interoperability test with:
 
 ```shell

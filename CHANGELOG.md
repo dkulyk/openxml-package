@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `OpenXmlPackage::removeParts()` and `removePartsAndRelationships()` remove a
+  list of parts with one relationship scan instead of one scan per part. Names
+  and inbound references are checked before removal; cascading results preserve
+  input order and report each equivalent part name once. `PackageInterface` is
+  unchanged.
+
 ## [0.9.0] - 2026-09-05
 
 ### Added

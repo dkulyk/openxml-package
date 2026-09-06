@@ -278,8 +278,10 @@ OpenXmlPackage::edit('document.docx', function (OpenXmlPackage $package): void {
 | `addPartFromPath(string $name, string $contentType, string $path): PartInterface` | Stage bytes copied from a readable local file. |
 | `setDefaultContentType(string $extension, string $contentType): void` | Declare a content type for every part with this extension that has no override. |
 | `removePart(string $name): void` | Remove an unreferenced part and its relationship part. |
+| `removeParts(array $names): void` | Remove unreferenced parts in one batch, checking all names and references before removal. |
 | `getInboundRelationships(string $partName): array` | Return package and part relationships targeting a part. |
 | `removePartAndRelationships(string $name): PartRemovalResult` | Explicitly remove a part and every inbound relationship. |
+| `removePartsAndRelationships(array $names): array` | Remove a batch and its inbound relationships, returning a list of `PartRemovalResult`. |
 | `movePart(string $source, string $destination): PartInterface` | Move a part and update relationships that depend on its name. |
 | `getRelationships(?string $sourcePartName = null): Relationships` | Read package or part relationships. |
 | `addRelationship(...)` | Add a package-level or part-level relationship. |
@@ -419,3 +421,32 @@ foreach ($result->getRemovedRelationships() as $reference) {
 
 Relationships to other shared resources are unchanged. Both removal methods also
 remove the deleted part's own relationship part and content-type override.
+
+For bulk deletion, pass a list to `OpenXmlPackage::removeParts()` or
+`OpenXmlPackage::removePartsAndRelationships()` instead of calling the single-part
+method in a loop. Each batch scans the package's relationships once, so removing
+many parts takes O(P + R + D) work for P parts, R relationships, and D input names,
+apart from the lengths of names and targets.
+
+```php
+$package->removeParts(['/word/media/unused1.png', '/word/media/unused2.png']);
+
+$results = $package->removePartsAndRelationships([
+    '/word/media/image1.png',
+    '/word/media/image2.png',
+]);
+```
+
+Both methods check all input names and resolve internal relationship targets
+before removing anything. `removeParts()` rejects any referenced selected part,
+including references from another selected part. Use
+`removePartsAndRelationships()` to explicitly remove those references, including
+cycles and self-references. External relationships are not inbound part references.
+Deleting a source part still removes its entire relationship part.
+
+Equivalent names, including case variants, are removed once. Cascading results
+use stored part names and follow the first occurrence of each name in the input;
+each result reports inbound relationships from the graph before removal. An empty
+list is a no-op. These batch helpers are available on `OpenXmlPackage`; the
+`PackageInterface` contract is unchanged. Existing single-part loops still perform
+one scan per call.

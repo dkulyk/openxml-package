@@ -21,7 +21,7 @@ final class ZipContainer implements ContainerInterface
 
     private int $liveEntryCount = 0;
 
-    /** @var array<string, string|resource|\Closure(): string> */
+    /** @var array<string, string|StagedFile|\Closure(): string> */
     private array $staged = [];
 
     /** @var array<string, true> */
@@ -49,12 +49,6 @@ final class ZipContainer implements ContainerInterface
             SourceArchiveRegistry::unregister($this->sourceFilename, $this);
         }
         $this->closeSourceArchive();
-
-        foreach ($this->staged as $contents) {
-            if (is_resource($contents)) {
-                fclose($contents);
-            }
-        }
     }
 
     public static function open(
@@ -143,21 +137,7 @@ final class ZipContainer implements ContainerInterface
             return $staged;
         }
 
-        $position = ftell($staged);
-        if ($position === false || fseek($staged, 0) !== 0) {
-            throw new OpenXmlException(sprintf('Unable to rewind streamed contents for part "%s".', $name));
-        }
-
-        try {
-            $contents = stream_get_contents($staged);
-            if ($contents === false) {
-                throw new OpenXmlException(sprintf('Unable to read ZIP entry "%s".', $name));
-            }
-
-            return $contents;
-        } finally {
-            fseek($staged, $position);
-        }
+        return $staged->read($name);
     }
 
     /**
@@ -203,7 +183,7 @@ final class ZipContainer implements ContainerInterface
             throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $name));
         }
         if (isset($this->staged[$name])) {
-            return $this->copyToIndependentStream($this->resolveStaged($name), $name);
+            return $this->openStagedStream($this->resolveStaged($name), $name);
         }
         $sourceFilename = $this->sourceFilename;
         if ($sourceFilename === null) {
@@ -279,7 +259,6 @@ final class ZipContainer implements ContainerInterface
     {
         self::assertSafeEntryName($name);
         $this->assertWriteWithinLimits($name, strlen($contents));
-        $this->closeStagedResource($name);
         $this->staged[$name] = $contents;
         $this->setEntry($name, strlen($contents));
         $this->setCompression($name, $compress);
@@ -296,7 +275,6 @@ final class ZipContainer implements ContainerInterface
                 $this->limits->maximumEntries,
             ));
         }
-        $this->closeStagedResource($name);
         $this->staged[$name] = $contents;
         $this->setEntry($name, 0);
         $this->setCompression($name, true);
@@ -341,8 +319,7 @@ final class ZipContainer implements ContainerInterface
 
             $this->assertWriteWithinLimits($name, $bytes);
             rewind($staged);
-            $this->closeStagedResource($name);
-            $this->staged[$name] = $staged;
+            $this->staged[$name] = new StagedFile($staged);
             $this->setEntry($name, $bytes);
             $this->setCompression($name, $compress);
             unset($this->moved[$name]);
@@ -355,7 +332,6 @@ final class ZipContainer implements ContainerInterface
 
     public function remove(string $name): void
     {
-        $this->closeStagedResource($name);
         unset($this->staged[$name], $this->stored[$name], $this->moved[$name]);
         if ($this->has($name)) {
             $this->liveBytes -= $this->entries[$name];
@@ -436,7 +412,7 @@ final class ZipContainer implements ContainerInterface
                 $contents = $this->resolveStaged($entryName);
                 $written = is_string($contents)
                     ? $archive->addFromString($entryName, $contents)
-                    : $this->addStreamFile($archive, $entryName, $contents);
+                    : $archive->addFile($contents->path($entryName), $entryName);
                 if (!$written) {
                     throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $entryName));
                 }
@@ -529,11 +505,11 @@ final class ZipContainer implements ContainerInterface
     }
 
     /**
-     * @param string|resource $contents
+     * @param string|StagedFile $contents
      *
      * @return resource
      */
-    private function copyToIndependentStream($contents, string $name)
+    private function openStagedStream(string|StagedFile $contents, string $name)
     {
         if (is_string($contents)) {
             $stream = self::temporaryStream();
@@ -543,41 +519,7 @@ final class ZipContainer implements ContainerInterface
             return $stream;
         }
 
-        return $this->copyResourceToIndependentStream($contents, $name, true);
-    }
-
-    /**
-     * @param resource $source
-     *
-     * @return resource
-     */
-    private function copyResourceToIndependentStream($source, string $name, bool $rewindSource)
-    {
-        $position = null;
-        if ($rewindSource) {
-            $position = ftell($source);
-            if ($position === false || fseek($source, 0) !== 0) {
-                throw new OpenXmlException(sprintf('Unable to rewind streamed contents for part "%s".', $name));
-            }
-        }
-        $destination = self::temporaryStream();
-
-        try {
-            if (stream_copy_to_stream($source, $destination) === false) {
-                throw new OpenXmlException(sprintf('Unable to stream ZIP entry "%s".', $name));
-            }
-            rewind($destination);
-
-            return $destination;
-        } catch (\Throwable $exception) {
-            fclose($destination);
-
-            throw $exception;
-        } finally {
-            if (is_int($position)) {
-                fseek($source, $position);
-            }
-        }
+        return $contents->openStream($name);
     }
 
     /** @return resource */
@@ -591,27 +533,12 @@ final class ZipContainer implements ContainerInterface
         return $stream;
     }
 
-    /** @param resource $contents */
-    private function addStreamFile(\ZipArchive $archive, string $entryName, $contents): bool
-    {
-        if (!fflush($contents)) {
-            throw new OpenXmlException(sprintf('Unable to flush streamed contents for part "%s".', $entryName));
-        }
-        $metadata = stream_get_meta_data($contents);
-        $path = $metadata['uri'] ?? null;
-        if (!is_string($path) || !is_file($path)) {
-            throw new OpenXmlException(sprintf('Streamed contents for part "%s" have no temporary file.', $entryName));
-        }
-
-        return $archive->addFile($path, $entryName);
-    }
-
     /**
      * Produce lazily staged contents once and keep the result.
      *
-     * @return string|resource
+     * @return string|StagedFile
      */
-    private function resolveStaged(string $name)
+    private function resolveStaged(string $name): string|StagedFile
     {
         $contents = $this->staged[$name];
         if (!$contents instanceof \Closure) {
@@ -624,13 +551,6 @@ final class ZipContainer implements ContainerInterface
         $this->setEntry($name, strlen($produced));
 
         return $produced;
-    }
-
-    private function closeStagedResource(string $name): void
-    {
-        if (isset($this->staged[$name]) && is_resource($this->staged[$name])) {
-            fclose($this->staged[$name]);
-        }
     }
 
     /** @param resource $stream */

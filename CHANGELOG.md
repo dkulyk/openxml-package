@@ -23,9 +23,12 @@ All notable changes to this project will be documented in this file. The format 
   timestamps are recorded when the part is added and checked on every read, so a
   file changed behind the package's back raises `ConcurrentModificationException`
   instead of being silently packaged. Pass a stream to keep the old snapshot
-  behaviour. Adding a 64 MiB file and saving drops from about 87 ms to 60 ms, and
-  `getPartReadablePath()` on such a part from 18 ms to nothing, because the bytes
-  are no longer read to stage them and written again to save them.
+  behaviour. `getPartReadablePath()` returns that file for such a part rather than
+  materializing a copy of it; every other staged part is still materialized, since
+  only a file the caller owns outlives the staging. Adding a 64 MiB file and saving
+  drops from about 87 ms to 66 ms, forty 2 MiB images from about 120 ms to 80 ms,
+  and `getPartReadablePath()` on a 64 MiB part from 18 ms to nothing, because the
+  bytes are no longer read to stage them and written again to save them.
 - Opening a stream for file-backed staged part contents now uses an independent
   read-only handle to the existing temporary file instead of copying the payload.
   Open readers retain their snapshot across part replacement, removal, moves,

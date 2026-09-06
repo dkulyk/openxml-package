@@ -209,9 +209,10 @@ $writer->setImagePath($image->getReadablePath());
 ```
 
 For an unchanged part in an opened ZIP, this normally returns a `zip://` URI and
-avoids copying the entry before the consumer reads it. New and modified parts are
-materialized automatically. Use `getLocalPath()` when the consumer specifically
-requires a real local filesystem path.
+avoids copying the entry before the consumer reads it. A part added from a local
+path returns that file, since the package is already reading the part from it.
+Everything else is materialized automatically. Use `getLocalPath()` when the
+consumer specifically requires a real local filesystem path.
 
 A consumer reading that `zip://` URI reads it directly, so the size bound the
 library applies to its own reads does not apply. For an untrusted package whose
@@ -226,7 +227,7 @@ The package owns materialized files. A returned local path remains valid while
 the package is alive, including after that part is modified again. Keep the
 package alive until every deferred consumer has finished reading its paths.
 
-Local files can also be copied into a part without loading them into a string:
+A local file can also become a part without being loaded into a string:
 
 ```php
 $image = $package->addPartFromPath(
@@ -238,8 +239,10 @@ $image = $package->addPartFromPath(
 $image->setContentsFromPath('replacement.png');
 ```
 
-Path input is copied immediately and is restricted to readable local files. Use
-the stream methods for other PHP stream wrappers.
+Path input is restricted to readable local files, and the file is read when the
+part is read or the package is saved rather than copied now, so it must stay
+where it is until then. Use the stream methods for other PHP stream wrappers, and
+when the package must hold a snapshot the caller can no longer affect.
 
 ## Atomic edits
 

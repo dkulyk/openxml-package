@@ -34,9 +34,10 @@ covers `getContents()`, `openStream()`, `getLocalPath()`, and everything the
 library itself parses. A copy-through save carries such an entry to the output
 unchanged; nothing expands, and reading it from the output fails the same way.
 
-The one read the library cannot bound is the `zip://` URI `getReadablePath()`
-returns: the consumer opens it themselves, so nothing the library holds is in
-that path. Applications that hand untrusted packages to a consumer reading raw
+The one read the library cannot bound is a path `getReadablePath()` returns: the
+consumer opens it themselves, so nothing the library holds is in that path. That
+is the `zip://` URI of an unchanged entry, or the caller's own file for a part
+added from a local path. Applications that hand untrusted packages to a consumer reading raw
 paths should use `getLocalPath()`, which materializes the entry through the
 bounded read, or apply their own limit to what they read.
 

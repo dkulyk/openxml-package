@@ -580,6 +580,41 @@ final class OpenXmlPackageTest extends TestCase
         }
     }
 
+    public function testReadablePathOfAStreamedPartOutlivesTheStagedContents(): void
+    {
+        $package = OpenXmlPackage::create();
+        $stream = fopen('php://temp', 'w+b');
+        self::assertNotFalse($stream);
+        fwrite($stream, 'staged contents');
+        rewind($stream);
+        $package->addPartFromStream('/media.bin', 'application/octet-stream', $stream);
+        fclose($stream);
+
+        $path = $package->getPartReadablePath('/media.bin');
+        // The path is promised for the life of the package, so it cannot be the
+        // temporary file that is released the moment the part is replaced.
+        $package->writePart('/media.bin', 'replaced');
+        clearstatcache(true, $path);
+
+        self::assertSame('staged contents', file_get_contents($path));
+    }
+
+    public function testReadablePathOfAPathBackedPartIsTheCallersOwnFile(): void
+    {
+        $source = tempnam(sys_get_temp_dir(), 'openxml-source-');
+        self::assertNotFalse($source);
+
+        try {
+            file_put_contents($source, 'on disk');
+            $package = OpenXmlPackage::create();
+            $package->addPartFromPath('/media.bin', 'application/octet-stream', $source);
+
+            self::assertSame($source, $package->getPartReadablePath('/media.bin'));
+        } finally {
+            unlink($source);
+        }
+    }
+
     public function testAPartSourceFileChangedBeforeSavingIsRefused(): void
     {
         $source = tempnam(sys_get_temp_dir(), 'openxml-source-');

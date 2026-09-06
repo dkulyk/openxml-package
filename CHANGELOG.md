@@ -16,6 +16,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Changed
 
+- **Breaking.** `addPartFromPath()`, `writePartFromPath()` and
+  `setContentsFromPath()` no longer copy the file into package-owned storage. The
+  file is read when the part is read or the package is saved, so the caller owns
+  it until then and must not move, replace, or delete it. The file's identity and
+  timestamps are recorded when the part is added and checked on every read, so a
+  file changed behind the package's back raises `ConcurrentModificationException`
+  instead of being silently packaged. Pass a stream to keep the old snapshot
+  behaviour. Adding a 64 MiB file and saving drops from about 87 ms to 60 ms, and
+  `getPartReadablePath()` on such a part from 18 ms to nothing, because the bytes
+  are no longer read to stage them and written again to save them.
 - Opening a stream for file-backed staged part contents now uses an independent
   read-only handle to the existing temporary file instead of copying the payload.
   Open readers retain their snapshot across part replacement, removal, moves,

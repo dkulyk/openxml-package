@@ -34,6 +34,9 @@ interface ContainerInterface
     /** @param resource $stream */
     public function writeStream(string $name, $stream, bool $compress = true): void;
 
+    /** Stage a local file where it is: it is read when the part is read or saved, not copied now. */
+    public function writePath(string $name, string $path, bool $compress = true): void;
+
     public function remove(string $name): void;
 
     public function move(string $source, string $destination): void;

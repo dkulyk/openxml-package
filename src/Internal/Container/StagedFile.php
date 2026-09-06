@@ -7,7 +7,7 @@ namespace DK\OpenXml\Internal\Container;
 use DK\OpenXml\Exception\OpenXmlException;
 
 /** @internal Owns an immutable staged temporary file shared by independent readers. */
-final class StagedFile
+final class StagedFile implements StagedContents
 {
     /** @param resource $stream Ownership of the temporary file is transferred to this object. */
     public function __construct(private $stream) {}

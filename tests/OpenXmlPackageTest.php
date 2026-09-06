@@ -549,7 +549,7 @@ final class OpenXmlPackageTest extends TestCase
         self::assertSame('[Content_Types].xml', $this->firstEntryName());
     }
 
-    public function testPartContentsCanBeCopiedFromLocalPaths(): void
+    public function testPartContentsCanBeReadFromLocalPaths(): void
     {
         $source = tempnam(sys_get_temp_dir(), 'openxml-source-');
         self::assertNotFalse($source);
@@ -558,12 +558,45 @@ final class OpenXmlPackageTest extends TestCase
             file_put_contents($source, 'first contents');
             $package = OpenXmlPackage::create();
             $part = $package->addPartFromPath('/media.bin', 'application/octet-stream', $source);
+            self::assertSame('first contents', $part->getContents());
 
-            file_put_contents($source, 'second contents');
-            $part->setContentsFromPath($source);
+            $second = tempnam(sys_get_temp_dir(), 'openxml-source-');
+            self::assertNotFalse($second);
+            file_put_contents($second, 'second contents');
+
+            try {
+                $part->setContentsFromPath($second);
+                self::assertSame('second contents', $part->getContents());
+                $package->saveAs($this->filename);
+            } finally {
+                unlink($second);
+            }
+
+            self::assertSame('second contents', OpenXmlPackage::open($this->filename)->readPart('/media.bin'));
+        } finally {
+            if (is_file($source)) {
+                unlink($source);
+            }
+        }
+    }
+
+    public function testAPartSourceFileChangedBeforeSavingIsRefused(): void
+    {
+        $source = tempnam(sys_get_temp_dir(), 'openxml-source-');
+        self::assertNotFalse($source);
+
+        try {
+            file_put_contents($source, 'first contents');
+            $package = OpenXmlPackage::create();
+            $package->addPartFromPath('/media.bin', 'application/octet-stream', $source);
+
+            // The caller owns the file until the package is saved. Changing it is
+            // refused rather than silently packaged.
             unlink($source);
+            file_put_contents($source, 'something else entirely');
 
-            self::assertSame('second contents', $part->getContents());
+            $this->expectException(ConcurrentModificationException::class);
+            $package->saveAs($this->filename);
         } finally {
             if (is_file($source)) {
                 unlink($source);

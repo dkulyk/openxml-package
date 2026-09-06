@@ -338,56 +338,121 @@ final class OpenXmlPackage implements PackageInterface
 
     public function removePart(string $name): void
     {
-        $requestedName = PartName::normalize($name);
-        $name = $this->findPartName($requestedName);
-        if ($name === null || PartName::isRelationshipsPart($name)) {
-            throw new PartNotFoundException(sprintf('Package part does not exist: %s', $requestedName));
+        $this->removeParts([$name]);
+    }
+
+    /**
+     * Remove unreferenced parts with one relationship scan. All names and inbound
+     * references are checked before removal; duplicate names are removed once.
+     *
+     * @param list<string> $names
+     */
+    public function removeParts(array $names): void
+    {
+        $referencesByPart = $this->collectInboundRelationships($names);
+        $batch = [];
+        foreach (array_keys($referencesByPart) as $name) {
+            $batch[strtolower($name)] = true;
         }
 
-        $references = $this->getInboundRelationships($name);
-        if ($references !== []) {
-            throw new PartInUseException($name, $references);
+        foreach ($referencesByPart as $name => $references) {
+            // A reference from a part the same batch removes is not what blocks
+            // removal: that part's relationship part goes with it, so nothing is
+            // left pointing here. Rejecting it would make the batch stricter than
+            // the loop of single removals it replaces, where deleting the source
+            // first succeeds. Ignoring it also makes the batch order-independent,
+            // which that loop is not.
+            $blocking = array_values(array_filter(
+                $references,
+                static fn(RelationshipReference $reference): bool => $reference->sourcePartName === null
+                    || !isset($batch[strtolower($reference->sourcePartName)]),
+            ));
+            if ($blocking !== []) {
+                throw new PartInUseException($name, $blocking);
+            }
         }
 
-        $this->removePartContents($name);
+        foreach ($referencesByPart as $name => $_references) {
+            $this->removePartContents($name);
+        }
     }
 
     public function getInboundRelationships(string $partName): array
     {
-        $requestedName = PartName::normalize($partName);
-        $partName = $this->findPartName($requestedName);
-        if ($partName === null || PartName::isRelationshipsPart($partName)) {
-            throw new PartNotFoundException(sprintf('Package part does not exist: %s', $requestedName));
-        }
-
-        $references = [];
-        foreach ([null, ...$this->relationshipSourceNames()] as $sourcePartName) {
-            foreach ($this->getRelationships($sourcePartName)->getByTargetPart($partName) as $relationship) {
-                $references[] = new RelationshipReference($sourcePartName, $relationship);
-            }
-        }
-
-        return $references;
+        return array_values($this->collectInboundRelationships([$partName]))[0];
     }
 
     public function removePartAndRelationships(string $name): PartRemovalResult
     {
-        $requestedName = PartName::normalize($name);
-        $name = $this->findPartName($requestedName);
-        if ($name === null || PartName::isRelationshipsPart($name)) {
-            throw new PartNotFoundException(sprintf('Package part does not exist: %s', $requestedName));
+        return $this->removePartsAndRelationships([$name])[0];
+    }
+
+    /**
+     * Remove parts and their inbound relationships with one relationship scan.
+     * Results follow input order, with equivalent names included only once.
+     *
+     * @param list<string> $names
+     *
+     * @return list<PartRemovalResult>
+     */
+    public function removePartsAndRelationships(array $names): array
+    {
+        $referencesByPart = $this->collectInboundRelationships($names);
+        // Remove references before any source part: a later target may be
+        // referenced by an earlier part in the same batch (including cycles).
+        foreach ($referencesByPart as $references) {
+            foreach ($references as $reference) {
+                $this->getRelationships($reference->sourcePartName)->remove(
+                    $reference->relationship->getId(),
+                );
+            }
         }
-        $references = $this->getInboundRelationships($name);
 
-        foreach ($references as $reference) {
-            $this->getRelationships($reference->sourcePartName)->remove(
-                $reference->relationship->getId(),
-            );
+        $results = [];
+        foreach ($referencesByPart as $name => $references) {
+            $this->removePartContents($name);
+            $results[] = new PartRemovalResult($name, $references);
         }
 
-        $this->removePartContents($name);
+        return $results;
+    }
 
-        return new PartRemovalResult($name, $references);
+    /**
+     * @param list<string> $names
+     *
+     * @return array<string, list<RelationshipReference>>
+     */
+    private function collectInboundRelationships(array $names): array
+    {
+        $selected = [];
+        $references = [];
+        foreach ($names as $name) {
+            $requestedName = PartName::normalize($name);
+            $name = $this->findPartName($requestedName);
+            if ($name === null || PartName::isRelationshipsPart($name)) {
+                throw new PartNotFoundException(sprintf('Package part does not exist: %s', $requestedName));
+            }
+            $selected[strtolower($name)] = $name;
+            $references[$name] = [];
+        }
+        if ($selected === []) {
+            return [];
+        }
+
+        foreach ([null, ...$this->relationshipSourceNames()] as $sourcePartName) {
+            foreach ($this->getRelationships($sourcePartName) as $relationship) {
+                if ($relationship->isExternal()) {
+                    continue;
+                }
+                $target = PartName::normalize((string) $relationship->getTargetPartName());
+                $name = $selected[strtolower($target)] ?? null;
+                if ($name !== null) {
+                    $references[$name][] = new RelationshipReference($sourcePartName, $relationship);
+                }
+            }
+        }
+
+        return $references;
     }
 
     private function removePartContents(string $name): void

@@ -247,13 +247,23 @@ final class OpenXmlPackage implements PackageInterface
 
     public function addPartFromPath(string $name, string $contentType, string $path, ?bool $compress = null): PartInterface
     {
-        $stream = self::openReadableFile($path);
-
-        try {
-            return $this->addPartFromStream($name, $contentType, $stream, $compress);
-        } finally {
-            fclose($stream);
+        $name = PartName::normalize($name);
+        if (PartName::isRelationshipsPart($name)) {
+            throw new OpenXmlException('Relationship parts are managed through the relationship API.');
         }
+        $this->assertPartNameAvailable($name, true);
+
+        $this->container()->writePath(
+            PartName::entry($name),
+            $path,
+            $compress ?? ContentCompression::compresses($contentType),
+        );
+        $this->registerContentType($name, $contentType);
+        $this->partNames->add($name);
+        ++$this->contentRevision;
+        $this->changed = true;
+
+        return $this->getPart($name);
     }
 
     public function readPart(string $name): string
@@ -321,13 +331,10 @@ final class OpenXmlPackage implements PackageInterface
     public function writePartFromPath(string $name, string $path, ?bool $compress = null): void
     {
         $name = $this->existingWritablePartName($name);
-        $stream = self::openReadableFile($path);
 
-        try {
-            $this->writePartFromStream($name, $stream, $compress);
-        } finally {
-            fclose($stream);
-        }
+        $this->container()->writePath(PartName::entry($name), $path, $compress ?? $this->partCompresses($name));
+        ++$this->contentRevision;
+        $this->changed = true;
     }
 
     public function setDefaultContentType(string $extension, string $contentType): void
@@ -1261,21 +1268,5 @@ final class OpenXmlPackage implements PackageInterface
         }
 
         return $resolvedFilename;
-    }
-
-    /** @return resource */
-    private static function openReadableFile(string $path)
-    {
-        $resolvedPath = realpath($path);
-        if ($resolvedPath === false || !is_file($resolvedPath) || !is_readable($resolvedPath)) {
-            throw new OpenXmlException(sprintf('Local file "%s" is not readable.', $path));
-        }
-
-        $stream = @fopen($resolvedPath, 'rb');
-        if ($stream === false) {
-            throw new OpenXmlException(sprintf('Unable to open local file "%s".', $path));
-        }
-
-        return $stream;
     }
 }

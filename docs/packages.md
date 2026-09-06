@@ -165,7 +165,16 @@ until `fclose()` or resource destruction, so it remains usable if the caller's
 package variable is released. Multiple simultaneous streams from the same
 package share one open ZIP archive.
 
-Parts staged from a stream or file path use a package-owned temporary file.
+A part added from a local path is not copied. The file stays where it is and is
+read when the part is read or the package is saved, so the caller owns it until
+then: it must not be moved, replaced, or deleted, and writing to it changes what
+the package holds. The file's identity, size, and timestamps are recorded when
+the part is added and checked on every read, so a file changed behind the
+package's back raises `ConcurrentModificationException` rather than being
+silently packaged. Pass a stream instead of a path when the package must hold a
+snapshot the caller can no longer affect.
+
+Parts staged from a stream use a package-owned temporary file.
 Opening a reader reopens that file read-only with its own cursor; it does not
 copy the payload again. The snapshot stays alive until both the package and all
 its readers release it. An already-open reader therefore keeps its original
@@ -282,7 +291,7 @@ OpenXmlPackage::edit('document.docx', function (OpenXmlPackage $package): void {
 | `getPartContentType(string $name): ?string` | Return the content type registered for a part, or `null` when none covers it. |
 | `addPart(string $name, string $contentType, string $contents): PartInterface` | Add or replace a small string-backed part. |
 | `addPartFromStream(string $name, string $contentType, resource $stream): PartInterface` | Stage bytes from the stream's current position to EOF. |
-| `addPartFromPath(string $name, string $contentType, string $path): PartInterface` | Stage bytes copied from a readable local file. |
+| `addPartFromPath(string $name, string $contentType, string $path): PartInterface` | Stage a readable local file, read when the part is read or saved. |
 | `setDefaultContentType(string $extension, string $contentType): void` | Declare a content type for every part with this extension that has no override. |
 | `removePart(string $name): void` | Remove an unreferenced part and its relationship part. |
 | `removeParts(array $names): void` | Remove unreferenced parts in one batch, checking all names and references before removal. |
@@ -337,7 +346,7 @@ them, like `PartInterface` does.
 | `getPartLocalPath(string $name): string` | Return a package-owned local filesystem path, materializing staged contents. |
 | `writePart(string $name, string $contents): void` | Replace an existing part's contents with a string. |
 | `writePartFromStream(string $name, resource $stream): void` | Replace an existing part's contents from the stream's current position to EOF. |
-| `writePartFromPath(string $name, string $path): void` | Replace an existing part's contents with bytes copied from a readable local file. |
+| `writePartFromPath(string $name, string $path): void` | Replace an existing part's contents with a readable local file, read when the part is read or saved. |
 
 ### `PartInterface`
 
@@ -351,7 +360,7 @@ them, like `PartInterface` does.
 | `getReadablePath(): string` | Return a `zip://` URI when possible, otherwise a package-owned local path. |
 | `getLocalPath(): string` | Return a package-owned local filesystem path. |
 | `setContentsFromStream(resource $stream): void` | Stage data from the current cursor to EOF. |
-| `setContentsFromPath(string $path): void` | Stage bytes copied from a readable local file. |
+| `setContentsFromPath(string $path): void` | Stage a readable local file, read when the part is read or saved. |
 | `getRelationships(): Relationships` | Return relationships originating at this part. |
 | `addRelationship(...)` | Create an internal or external relationship. |
 | `removeRelationship(string $id): void` | Remove a relationship by ID. |

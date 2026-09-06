@@ -21,7 +21,7 @@ final class ZipContainer implements ContainerInterface
 
     private int $liveEntryCount = 0;
 
-    /** @var array<string, string|StagedFile|\Closure(): string> */
+    /** @var array<string, string|StagedContents|\Closure(): string> */
     private array $staged = [];
 
     /** @var array<string, true> */
@@ -231,8 +231,15 @@ final class ZipContainer implements ContainerInterface
         if (!$this->has($name)) {
             throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $name));
         }
+        if (isset($this->staged[$name])) {
+            $staged = $this->resolveStaged($name);
+
+            // A file-backed staged part already has a readable path; a string-backed
+            // one would have to be written out first, which is materialization.
+            return $staged instanceof StagedContents ? $staged->path($name) : null;
+        }
         $sourceFilename = $this->sourceFilename;
-        if (isset($this->staged[$name]) || $sourceFilename === null) {
+        if ($sourceFilename === null) {
             return null;
         }
         if (!in_array('zip', stream_get_wrappers(), true) || str_contains($sourceFilename, '#')) {
@@ -328,6 +335,37 @@ final class ZipContainer implements ContainerInterface
 
             throw $exception;
         }
+    }
+
+    public function writePath(string $name, string $path, bool $compress = true): void
+    {
+        self::assertSafeEntryName($name);
+        $resolved = realpath($path);
+        if ($resolved === false || !is_file($resolved) || !is_readable($resolved)) {
+            throw new OpenXmlException(sprintf('Local file "%s" is not readable.', $path));
+        }
+        $bytes = filesize($resolved);
+        if ($bytes === false) {
+            throw new OpenXmlException(sprintf('Unable to size local file "%s".', $path));
+        }
+        if ($bytes > $this->limits->maximumPartBytes) {
+            throw new PackageLimitException(sprintf(
+                'Part "%s" exceeds the configured maximum of %d bytes.',
+                $name,
+                $this->limits->maximumPartBytes,
+            ));
+        }
+        $this->assertWriteWithinLimits($name, $bytes);
+
+        // Staged where it already is: the file is read when the package reads or
+        // saves the part, so nothing is copied now. The caller owns that file until
+        // the package is saved, and its identity and timestamps are checked on every
+        // read, so a file replaced behind the package's back is refused rather than
+        // silently packaged.
+        $this->staged[$name] = new StagedPath($resolved);
+        $this->setEntry($name, $bytes);
+        $this->setCompression($name, $compress);
+        unset($this->moved[$name]);
     }
 
     public function remove(string $name): void
@@ -505,11 +543,11 @@ final class ZipContainer implements ContainerInterface
     }
 
     /**
-     * @param string|StagedFile $contents
+     * @param string|StagedContents $contents
      *
      * @return resource
      */
-    private function openStagedStream(string|StagedFile $contents, string $name)
+    private function openStagedStream(string|StagedContents $contents, string $name)
     {
         if (is_string($contents)) {
             $stream = self::temporaryStream();
@@ -536,9 +574,9 @@ final class ZipContainer implements ContainerInterface
     /**
      * Produce lazily staged contents once and keep the result.
      *
-     * @return string|StagedFile
+     * @return string|StagedContents
      */
-    private function resolveStaged(string $name): string|StagedFile
+    private function resolveStaged(string $name): string|StagedContents
     {
         $contents = $this->staged[$name];
         if (!$contents instanceof \Closure) {

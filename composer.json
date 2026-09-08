@@ -19,6 +19,7 @@
         "ext-zip": "*"
     },
     "require-dev": {
+        "ext-zlib": "*",
         "dkulyk/compound-file": "^0.2.0",
         "friendsofphp/php-cs-fixer": "^3.88",
         "phpstan/phpstan": "^2.1",

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Fixed
+
+- A DTD in package XML or in an `EncryptionInfo` stream is refused whatever the
+  document's encoding. The check scanned the raw bytes for `<!DOCTYPE`, which a
+  UTF-16 document hides behind a high byte after every character, so such a
+  package was accepted and its internal entities substituted into attribute and
+  element values. The parsed document is asked for its doctype instead. Reading
+  external entities and expanding entities beyond libxml's own amplification
+  limit were already refused, so no file disclosure or expansion attack was
+  reachable through the gap. Dropping the byte scan also makes parsing a
+  content-types part of 20000 overrides about 4 percent faster.
+
 ## [0.11.0] - 2026-09-09
 
 ### Added

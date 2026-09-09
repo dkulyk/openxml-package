@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace DK\OpenXml\Tests;
 
+use DK\OpenXml\Exception\InvalidEncryptedPackageException;
 use DK\OpenXml\Exception\OpenXmlException;
 use DK\OpenXml\Exception\PackageLimitException;
 use DK\OpenXml\Exception\PackageValidationException;
 use DK\OpenXml\Exception\UnsupportedFileFormatException;
+use DK\OpenXml\Internal\Encryption\AgileEncryptionInfo;
 use DK\OpenXml\OfficeFileDetector;
 use DK\OpenXml\OfficeFileFormat;
 use DK\OpenXml\OpenXmlPackage;
@@ -35,7 +37,7 @@ final class SecurityTest extends TestCase
         }
     }
 
-    public function testDtdIsRejectedBeforeParsing(): void
+    public function testDtdIsRejected(): void
     {
         $xml = <<<'XML'
             <?xml version="1.0"?>
@@ -46,6 +48,59 @@ final class SecurityTest extends TestCase
         $this->expectException(OpenXmlException::class);
         $this->expectExceptionMessage('DTD declarations are not allowed');
         ContentTypes::fromXml($xml);
+    }
+
+    /**
+     * libxml reads the encoding from the BOM, so `<!DOCTYPE` in a UTF-16 document
+     * carries a high byte after every character and slips past any byte-level scan.
+     */
+    public function testDtdIsRejectedInUtf16(): void
+    {
+        $xml = self::utf16(
+            '<?xml version="1.0" encoding="UTF-16"?>'
+            . '<!DOCTYPE Types [<!ENTITY payload "substituted">]>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="xml" ContentType="&payload;"/>'
+            . '</Types>',
+        );
+
+        $this->expectException(OpenXmlException::class);
+        $this->expectExceptionMessage('DTD declarations are not allowed');
+        ContentTypes::fromXml($xml);
+    }
+
+    public function testUtf16PackageXmlWithoutDtdIsAccepted(): void
+    {
+        $xml = self::utf16(
+            '<?xml version="1.0" encoding="UTF-16"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '</Types>',
+        );
+
+        self::assertSame('application/xml', ContentTypes::fromXml($xml)->getForPart('/document.xml'));
+    }
+
+    public function testDtdIsRejectedInUtf16EncryptionInfo(): void
+    {
+        $stream = pack('vvV', 4, 4, 0x40) . self::utf16(
+            '<?xml version="1.0" encoding="UTF-16"?>'
+            . '<!DOCTYPE encryption [<!ENTITY payload "substituted">]>'
+            . '<encryption xmlns="http://schemas.microsoft.com/office/2006/encryption"/>',
+        );
+
+        $this->expectException(InvalidEncryptedPackageException::class);
+        $this->expectExceptionMessage('DTD declarations are not allowed');
+        AgileEncryptionInfo::fromStream($stream, 1_000_000);
+    }
+
+    /** UTF-16LE with a BOM. Built by hand so the tests need no mbstring. */
+    private static function utf16(string $ascii): string
+    {
+        return "\xFF\xFE" . implode('', array_map(
+            static fn(string $byte): string => $byte . "\x00",
+            str_split($ascii),
+        ));
     }
 
     public function testUnexpectedXmlRootIsRejected(): void

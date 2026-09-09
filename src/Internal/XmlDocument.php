@@ -54,15 +54,19 @@ final class XmlDocument
             ));
         }
 
-        if (stripos($xml, '<!DOCTYPE') !== false) {
-            throw new OpenXmlException('DTD declarations are not allowed in package XML.');
-        }
-
         $document = new \DOMDocument();
         $document->preserveWhiteSpace = false;
 
         if (!@$document->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT)) {
             throw new OpenXmlException('Invalid package XML.');
+        }
+
+        // Asked of the parsed document rather than the bytes: libxml takes the
+        // encoding from the BOM, so a UTF-16 document hides `<!DOCTYPE` from any
+        // byte-level scan. Parsing first is safe because entities are neither
+        // loaded nor expanded past libxml's own amplification limit.
+        if ($document->doctype !== null) {
+            throw new OpenXmlException('DTD declarations are not allowed in package XML.');
         }
 
         $root = $document->documentElement;

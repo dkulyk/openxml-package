@@ -17,8 +17,8 @@ use DK\OpenXml\Repair\RepairReport;
 final class PackageRepairer
 {
     /**
-     * @param \Closure(?string): Relationships $getRelationships
-     * @param \Closure(): void                 $markChanged
+     * @param \Closure(?string): ?Relationships $getRelationships
+     * @param \Closure(): void                  $markChanged
      */
     public function __construct(
         private ContainerInterface $container,
@@ -141,6 +141,9 @@ final class PackageRepairer
         foreach ([null, ...$partNames] as $sourcePartName) {
             try {
                 $relationships = ($this->getRelationships)($sourcePartName);
+                if ($relationships === null) {
+                    continue;
+                }
             } catch (OpenXmlException) {
                 continue;
             }

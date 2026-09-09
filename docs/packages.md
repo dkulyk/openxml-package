@@ -370,6 +370,12 @@ them, like `PartInterface` does.
 
 ### `Relationships`
 
+`getRelationships()` returns a live collection, including when it starts empty.
+Internal package walks reuse those collections and load existing `.rels` parts,
+but do not create empty collections for sources without relationships. Validation, repair,
+inbound-reference lookup, moves, and removal therefore do not retain a collection
+for every unrelated part in a large package.
+
 | Method | Description |
 | --- | --- |
 | `create(string $type, string $target, bool $external = false, ?string $id = null): RelationshipInterface` | Create and add a relationship. |

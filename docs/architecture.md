@@ -38,7 +38,10 @@ size. Entry contents are decoded by the same code, in bounded chunks: a part is
 never held in memory in full unless the caller asks for it as a string, and the
 decoder stops the moment a part produces more bytes than its directory record
 declares. A part is accepted only when its decompressed size, its checksum and
-the number of compressed bytes the decoder consumed all match that record.
+the number of compressed bytes the decoder consumed all match that record. The
+checksum comes from zlib rather than from PHP, through the trailer of a gzip
+stream that compresses nothing: PHP computes CRC-32 a byte at a time, and on a
+part of any size that dominated everything else the reader does.
 
 Streamed writes are staged in temporary storage. Reads of unchanged entries go
 through a stream wrapper over the decoder, so a part is decoded as it is read.

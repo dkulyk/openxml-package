@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- Checksums come from zlib instead of PHP, which computes CRC-32 a byte at a
+  time. Checksumming 16 MiB goes from 30 ms to 2 ms, which is what reading and
+  writing a large part spent most of its time on.
 - A part copied from one open package to another moves its compressed bytes as
   they are, when nothing has read from its stream and the destination wants the
   compression the source used. Moving a 16 MiB part goes from 99 ms to 0.4 ms.
@@ -35,8 +38,8 @@ All notable changes to this project will be documented in this file. The format 
 - Entry contents are decompressed by the library. A part is decoded in chunks,
   so reading one as a stream no longer materialises it, and it is accepted only
   when its size, its CRC-32 and the number of compressed bytes consumed all agree
-  with its directory record. Reading a large part is slower for now: 16 MiB of
-  incompressible data goes from 43 ms to 70 ms, nearly all of it the checksum.
+  with its directory record. Opening a package and opening a part stream both got
+  faster.
 
 ## [0.10.0] - 2026-09-07
 

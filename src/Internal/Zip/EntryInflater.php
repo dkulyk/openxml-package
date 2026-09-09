@@ -25,7 +25,7 @@ final class EntryInflater
 
     private ?\InflateContext $inflate = null;
 
-    private \HashContext $checksum;
+    private Crc32 $checksum;
 
     private int $consumed = 0;
 
@@ -49,7 +49,7 @@ final class EntryInflater
                 $entry->method,
             ));
         }
-        $this->checksum = hash_init('crc32b');
+        $this->checksum = new Crc32();
         if ($entry->method === self::METHOD_DEFLATE) {
             $inflate = inflate_init(ZLIB_ENCODING_RAW);
             if ($inflate === false) {
@@ -119,7 +119,7 @@ final class EntryInflater
                 $this->entry->uncompressedSize,
             ));
         }
-        hash_update($this->checksum, $decoded);
+        $this->checksum->update($decoded);
     }
 
     private function verify(): void
@@ -135,8 +135,7 @@ final class EntryInflater
                 throw $this->corrupt('it carries data past the end of its compressed stream');
             }
         }
-        $crc = Binary::integers(unpack('N1crc', hash_final($this->checksum, true)))['crc'];
-        if ($crc !== $this->entry->crc) {
+        if ($this->checksum->value() !== $this->entry->crc) {
             throw $this->corrupt('its checksum does not match its directory');
         }
     }

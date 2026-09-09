@@ -14,7 +14,8 @@ All notable changes to this project will be documented in this file. The format 
   benchmark-stream-save` reports both. An entry whose size is unknown in advance
   carries a trailing descriptor when the destination cannot seek; a seekable
   destination still patches the local header, so saving to a file produces the
-  same archive it did before.
+  same archive it did before. `PackageInterface` declares `saveTo()` alongside
+  `save()` and `saveAs()`, so a caller typed against the interface reaches it.
 
 ### Fixed
 

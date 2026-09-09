@@ -44,9 +44,11 @@ final class ZipWriter
 
     /**
      * Counted rather than asked of the stream: a pipe has no position to tell,
-     * and every byte of the archive goes through this writer anyway.
+     * and every byte of the archive goes through this writer anyway. It starts
+     * where the stream already is, so a destination that already holds bytes
+     * still gets offsets a reader can follow.
      */
-    private int $position = 0;
+    private int $position;
 
     /**
      * A stream that cannot seek back to a local header takes the sizes it could
@@ -58,6 +60,8 @@ final class ZipWriter
     public function __construct(private $handle)
     {
         $this->seekable = stream_get_meta_data($handle)['seekable'];
+        $position = ftell($handle);
+        $this->position = $position === false ? 0 : $position;
     }
 
     /**
@@ -363,18 +367,25 @@ final class ZipWriter
         }
     }
 
+    /**
+     * A pipe or socket accepts as much as fits and reports how much that was, so
+     * the remainder is offered again until it is taken. A write that reports no
+     * progress at all ends the archive with an exception rather than a warning.
+     */
     private function write(string $bytes, string $subject): int
     {
-        if ($bytes === '') {
-            return 0;
+        $length = strlen($bytes);
+        $offset = 0;
+        while ($offset < $length) {
+            $written = @fwrite($this->handle, $offset === 0 ? $bytes : substr($bytes, $offset));
+            if ($written === false || $written === 0) {
+                throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $subject));
+            }
+            $offset += $written;
         }
-        $written = fwrite($this->handle, $bytes);
-        if ($written !== strlen($bytes)) {
-            throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $subject));
-        }
-        $this->position += $written;
+        $this->position += $length;
 
-        return $written;
+        return $length;
     }
 
     private function position(): int

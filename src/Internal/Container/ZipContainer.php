@@ -477,6 +477,16 @@ final class ZipContainer implements ContainerInterface
             throw new \InvalidArgumentException('A package must be written to a stream resource.');
         }
 
+        // Checked before the first byte so a read-only handle fails as an argument
+        // rather than as a warning from fwrite() partway through the archive.
+        $mode = stream_get_meta_data($destination)['mode'];
+        if (strpbrk($mode, 'waxc+') === false) {
+            throw new \InvalidArgumentException(sprintf(
+                'A package must be written to a writable stream; mode "%s" is read-only.',
+                $mode,
+            ));
+        }
+
         $this->assertSourceUnchanged();
 
         $writer = new ZipWriter($destination);

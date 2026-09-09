@@ -78,6 +78,60 @@ final class StreamedSaveTest extends TestCase
         );
     }
 
+    public function testAStreamThatAlreadyHoldsBytesGetsUsableOffsets(): void
+    {
+        $destination = fopen('php://temp', 'r+b');
+        self::assertNotFalse($destination);
+        fwrite($destination, 'PREFIX');
+
+        self::package()->saveTo($destination);
+        rewind($destination);
+        $bytes = stream_get_contents($destination);
+        fclose($destination);
+        self::assertNotFalse($bytes);
+        file_put_contents($this->filename, $bytes);
+
+        // ext-zip reads an archive that starts partway into a file, and the entry
+        // offsets have to point at where the entries really are for it to succeed.
+        self::assertArchiveConsistent($this->filename);
+        self::assertSame(str_repeat('payload', 4096), self::archiveContents($this->filename, 'media/payload.bin'));
+    }
+
+    /**
+     * A wrapper that consumes eight bytes at a time and is seeked back into to
+     * patch a header: the archive must come out byte for byte what a file gets.
+     */
+    public function testAStreamTakingSmallWritesProducesTheSameArchiveAsAFile(): void
+    {
+        stream_wrapper_register('openxml-test-chunked', ChunkedSink::class);
+
+        try {
+            $destination = fopen('openxml-test-chunked://sink', 'w+b');
+            self::assertNotFalse($destination);
+            self::package()->saveTo($destination);
+            fclose($destination);
+        } finally {
+            stream_wrapper_unregister('openxml-test-chunked');
+        }
+
+        self::package()->saveAs($this->filename);
+        self::assertSame(file_get_contents($this->filename), ChunkedSink::$written);
+    }
+
+    public function testSaveToRejectsAStreamItCannotWriteTo(): void
+    {
+        $readOnly = fopen(__FILE__, 'rb');
+        self::assertNotFalse($readOnly);
+
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('mode "rb" is read-only');
+            self::package()->saveTo($readOnly);
+        } finally {
+            fclose($readOnly);
+        }
+    }
+
     public function testSaveToRejectsAnythingButAStream(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -143,6 +197,21 @@ final class StreamedSaveTest extends TestCase
         }
     }
 
+    private static function archiveContents(string $filename, string $entryName): string
+    {
+        $archive = new \ZipArchive();
+        self::assertTrue($archive->open($filename, \ZipArchive::RDONLY) === true);
+
+        try {
+            $contents = $archive->getFromName($entryName);
+            self::assertNotFalse($contents);
+
+            return $contents;
+        } finally {
+            $archive->close();
+        }
+    }
+
     /** @return array<string, array{size: int, compressedSize: int, crc: int, method: int}> */
     private static function archiveEntriesOf(string $bytes, string $scratch): array
     {
@@ -154,4 +223,71 @@ final class StreamedSaveTest extends TestCase
             unlink($scratch);
         }
     }
+}
+
+/**
+ * Takes eight bytes per call and keeps what it took, so an archive assembled
+ * through many small writes and header patches can be compared with one written
+ * to a file. PHP's stream layer re-drives a wrapper until the buffer is drained,
+ * so this exercises the writer's seek-back path rather than fwrite() itself
+ * returning short.
+ */
+final class ChunkedSink
+{
+    public static string $written = '';
+
+    /** @var resource */
+    public $context;
+
+    private int $position = 0;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        self::$written = '';
+        $this->position = 0;
+
+        return true;
+    }
+
+    public function stream_write(string $data): int
+    {
+        $chunk = substr($data, 0, 8);
+        self::$written = substr_replace(self::$written, $chunk, $this->position, strlen($chunk));
+        $this->position += strlen($chunk);
+
+        return strlen($chunk);
+    }
+
+    public function stream_seek(int $offset, int $whence = SEEK_SET): bool
+    {
+        $position = match ($whence) {
+            SEEK_CUR => $this->position + $offset,
+            SEEK_END => strlen(self::$written) + $offset,
+            default => $offset,
+        };
+        if ($position < 0) {
+            return false;
+        }
+        $this->position = $position;
+
+        return true;
+    }
+
+    public function stream_tell(): int
+    {
+        return $this->position;
+    }
+
+    public function stream_eof(): bool
+    {
+        return $this->position >= strlen(self::$written);
+    }
+
+    /** @return array<string, int> */
+    public function stream_stat(): array
+    {
+        return [];
+    }
+
+    public function stream_close(): void {}
 }

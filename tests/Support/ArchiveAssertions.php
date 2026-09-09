@@ -6,6 +6,7 @@ namespace DK\OpenXml\Tests\Support;
 
 use DK\OpenXml\Internal\Zip\CentralDirectory;
 use DK\OpenXml\Internal\Zip\ZipReader;
+use DK\OpenXml\OpenXmlPackage;
 use DK\OpenXml\Security\PackageLimits;
 use PHPUnit\Framework\Assert;
 
@@ -80,5 +81,50 @@ trait ArchiveAssertions
         }
 
         Assert::fail(sprintf('Entry "%s" is not in "%s".', $entryName, $filename));
+    }
+
+    /**
+     * The general purpose flags of every entry, keyed by entry name.
+     *
+     * @return array<string, int>
+     */
+    protected static function entryFlags(string $filename): array
+    {
+        $handle = fopen($filename, 'rb');
+        Assert::assertNotFalse($handle);
+
+        try {
+            $limits = new PackageLimits();
+            $eocd = CentralDirectory::locate($handle, (int) filesize($filename), $limits);
+            $flags = [];
+            foreach (CentralDirectory::scan($handle, $eocd, $limits) as $entry) {
+                $flags[$entry->name] = $entry->flags;
+            }
+
+            return $flags;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /** The bytes saveTo() puts on a stream that cannot seek. */
+    protected static function captured(OpenXmlPackage $package): string
+    {
+        $output = fopen('php://output', 'wb');
+        Assert::assertNotFalse($output);
+        Assert::assertFalse(stream_get_meta_data($output)['seekable']);
+
+        ob_start();
+
+        try {
+            $package->saveTo($output);
+        } finally {
+            fclose($output);
+            $bytes = ob_get_clean();
+        }
+
+        Assert::assertNotFalse($bytes);
+
+        return $bytes;
     }
 }

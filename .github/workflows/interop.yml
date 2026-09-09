@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   libreoffice:
-    name: Rewrite and reopen a DOCX
+    name: Rewrite and stream a DOCX back to LibreOffice
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

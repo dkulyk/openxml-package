@@ -25,7 +25,7 @@ use DK\OpenXml\Exception\PackageLimitException;
  */
 final class EntryInflater
 {
-    private const CHUNK = 65_536;
+    public const CHUNK = 65_536;
     private const METHOD_STORE = 0;
     private const METHOD_DEFLATE = 8;
 

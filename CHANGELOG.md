@@ -10,7 +10,9 @@ All notable changes to this project will be documented in this file. The format 
   a gzip stream, so its checksum and length are verified while it is decoded
   rather than in a second pass. Decoding 16 MiB of incompressible data goes from
   33 ms to 3.9 ms, and reading a package of 2000 small parts is about a tenth
-  faster.
+  faster. A part stream hands decoded chunks over without
+  copying them, so reading 16 MiB through `openStream()` costs 2.9 ms against
+  3.4 ms through `ZipArchive::getStream()`.
 - A part copied from one open package to another moves its compressed bytes as
   they are, when nothing has read from its stream and the destination wants the
   compression the source used. Moving a 16 MiB part goes from 99 ms to 0.4 ms.

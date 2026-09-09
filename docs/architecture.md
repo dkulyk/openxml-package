@@ -50,7 +50,10 @@ writes take the same checksum from the trailer of a gzip stream of their own.
 
 Streamed writes are staged in temporary storage. Reads of unchanged entries go
 through a stream wrapper over the decoder, so a part is decoded as it is read.
-The wrapper reads forward and rewinds; it does not seek elsewhere. A container
+The wrapper reads forward and rewinds; it does not seek elsewhere. It sets the
+stream's buffer to one decoded chunk, so a caller reading in small pieces is
+served from that buffer in C rather than calling into PHP for each piece, and a
+chunk that fits what was asked for is handed over without being copied at all. A container
 opens its source archive once, shares it between active entry streams, and is
 retained by each stream context until the caller closes it. Complete output is validated in a same-directory temporary
 file before atomic replacement.

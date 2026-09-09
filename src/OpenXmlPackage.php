@@ -19,6 +19,7 @@ use DK\OpenXml\Internal\PackageRepairer;
 use DK\OpenXml\Internal\PartNameIndex;
 use DK\OpenXml\Internal\SignatureInspector;
 use DK\OpenXml\Internal\SourceFileState;
+use DK\OpenXml\Internal\Zip\CentralDirectory;
 use DK\OpenXml\Packaging\ContentCompression;
 use DK\OpenXml\Packaging\ContentTypes;
 use DK\OpenXml\Packaging\PackageInterface;
@@ -1150,18 +1151,21 @@ final class OpenXmlPackage implements PackageInterface
 
     private function verifyWrittenPackage(string $filename): void
     {
-        // Entries were validated when staged; only the archive structure and content types are read back.
+        // Entries were validated when staged; only the archive structure and content
+        // types are read back. Opening the archive parses its whole directory, and
+        // the package writer puts content types first, so both are checked here.
         $archive = new \ZipArchive();
         if ($archive->open($filename, \ZipArchive::RDONLY) !== true) {
             throw new OpenXmlException(sprintf('Written package "%s" cannot be opened.', $filename));
         }
 
         try {
-            $contentTypesXml = $archive->getFromName('[Content_Types].xml');
+            $first = $archive->getNameIndex(0);
+            $contentTypesXml = $archive->getFromName(CentralDirectory::CONTENT_TYPES);
         } finally {
             $archive->close();
         }
-        if ($contentTypesXml === false) {
+        if ($first !== CentralDirectory::CONTENT_TYPES || $contentTypesXml === false) {
             throw new OpenXmlException(sprintf('Written package "%s" has no [Content_Types].xml.', $filename));
         }
         ContentTypes::fromXml($contentTypesXml, $this->limits->maximumXmlBytes);

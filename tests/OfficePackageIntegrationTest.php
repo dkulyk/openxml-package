@@ -6,11 +6,14 @@ namespace DK\OpenXml\Tests;
 
 use DK\OpenXml\OpenXmlPackage;
 use DK\OpenXml\Packaging\RelationshipType;
+use DK\OpenXml\Tests\Support\ArchiveAssertions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class OfficePackageIntegrationTest extends TestCase
 {
+    use ArchiveAssertions;
+
     /**
      * @param array<string, array{string, string}> $additionalParts
      */
@@ -35,6 +38,7 @@ final class OfficePackageIntegrationTest extends TestCase
             }
 
             $package->saveAs($filename);
+            self::assertArchiveConsistent($filename);
             $reopened = OpenXmlPackage::open($filename);
 
             self::assertSame([], $reopened->validate());

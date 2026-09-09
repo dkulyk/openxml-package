@@ -13,6 +13,11 @@ All notable changes to this project will be documented in this file. The format 
   Opening a package and detecting an Office file walk it lazily; on a 4000-entry
   package a container open goes from 8.6 ms to 4.9 ms and detection from 1.12 ms
   to 0.05 ms. Entry contents are still read through ext-zip.
+- Saving writes the archive directly instead of copying the source file and
+  letting ext-zip rewrite it; unchanged entries that sit side by side move in one
+  pass. Replacing one part of a 200-part, 12.6 MB package goes from 16.0 ms to
+  8.8 ms, and peak memory during a save from 30 MB to 4 MB. `[Content_Types].xml`
+  is always the first entry; an entry of 4 GiB or more is refused.
 
 ## [0.10.0] - 2026-09-07
 

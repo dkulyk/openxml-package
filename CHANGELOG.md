@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-09
+
 ### Added
 
 - `saveTo()` writes a package to an open stream, which need not be seekable, so
@@ -404,7 +406,8 @@ All notable changes to this project will be documented in this file. The format 
 - Suspicious compression ratios are rejected before entry extraction.
 - Saving digitally signed packages is blocked until signature preservation is supported.
 
-[Unreleased]: https://github.com/dkulyk/openxml-package/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/dkulyk/openxml-package/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/dkulyk/openxml-package/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dkulyk/openxml-package/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dkulyk/openxml-package/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dkulyk/openxml-package/compare/v0.8.1...v0.9.0

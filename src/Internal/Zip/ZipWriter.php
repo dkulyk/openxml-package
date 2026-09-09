@@ -206,7 +206,9 @@ final class ZipWriter
 
         $count = count($this->written);
         $directorySize = strlen($directory);
-        $zip64 = $count > self::SENTINEL_16
+        // 0xFFFF in the record is how a reader is told to look for ZIP64, so an
+        // archive that really holds that many entries must carry one.
+        $zip64 = $count >= self::SENTINEL_16
             || $directoryOffset >= self::SENTINEL_32
             || $directorySize >= self::SENTINEL_32;
 

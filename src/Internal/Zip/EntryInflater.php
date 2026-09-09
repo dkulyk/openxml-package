@@ -26,6 +26,16 @@ use DK\OpenXml\Exception\PackageLimitException;
 final class EntryInflater
 {
     public const CHUNK = 65_536;
+
+    /**
+     * How much compressed data the first read of an entry hands to zlib.
+     *
+     * Deflate expands by at most about 1032 to 1, so this much input can decode to
+     * roughly a megabyte and no more. That is the price of finding out that an
+     * entry is not what its directory says.
+     */
+    private const FIRST_PIECE = 1_024;
+
     private const METHOD_STORE = 0;
     private const METHOD_DEFLATE = 8;
 
@@ -46,6 +56,9 @@ final class EntryInflater
     private int $status = ZLIB_OK;
 
     private int $readLength = 0;
+
+    /** How much compressed data one read may hand to zlib, see next(). */
+    private int $piece = self::FIRST_PIECE;
 
     public function __construct(
         private readonly ZipReader $reader,
@@ -82,7 +95,15 @@ final class EntryInflater
         return $this->entry->uncompressedSize;
     }
 
-    /** The next slice of decoded bytes, empty once the entry has been read out. */
+    /**
+     * The next slice of decoded bytes, empty once the entry has been read out.
+     *
+     * zlib decodes whatever it is handed in one allocation, so the first read of an
+     * entry is small: an entry that expands far past what its directory claims is
+     * refused after about a megabyte rather than after the whole expansion. Reads
+     * double until they reach a full chunk, which takes seven of them, so an entry
+     * that tells the truth pays for the caution once and not per byte.
+     */
     public function next(): string
     {
         if ($this->finished) {
@@ -92,13 +113,13 @@ final class EntryInflater
         $decoded = '';
         $remaining = $this->entry->compressedSize - $this->consumed;
         if ($remaining > 0) {
-            $length = min(self::CHUNK, $remaining);
+            $length = min($this->piece, $remaining);
             $raw = $this->reader->readRaw($this->entry, $this->consumed, $length);
             $this->consumed += $length;
             $decoded = $this->inflate === null ? $raw : $this->inflated($this->inflate, $raw, ZLIB_NO_FLUSH);
+            $this->piece = min(self::CHUNK, $this->piece * 2);
+            $this->accept($decoded);
         }
-
-        $this->accept($decoded);
         if ($this->consumed >= $this->entry->compressedSize) {
             if ($this->inflate !== null) {
                 $this->closeGzip($this->inflate);

@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file. The format 
   No API changes; the source file must not change before the destination is
   saved, and one that does raises `ConcurrentModificationException`.
 
+### Fixed
+
+- An entry whose directory understates how much it holds is refused after about
+  a megabyte rather than after the whole expansion.
+- An archive of exactly 65535 entries is written with a ZIP64 record; without one
+  this library refused to read back what it had just written.
+
 ### Removed
 
 - **Breaking:** `ext-zip` is no longer required. The runtime now needs PHP 8.1,

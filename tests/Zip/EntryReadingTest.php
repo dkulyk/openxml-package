@@ -144,6 +144,29 @@ final class EntryReadingTest extends TestCase
         OpenXmlPackage::open($filename)->getPart('/word/document.xml')->getContents();
     }
 
+    public function testAnEntryThatLiesAboutItsSizeIsRefusedBeforeItIsAllocated(): void
+    {
+        $archive = (new ZipFixture())->add('bomb.bin', str_repeat("\0", 16 * 1024 * 1024))->build();
+        $filename = $this->write(self::patch($archive, 'bomb.bin', self::UNCOMPRESSED_SIZE_OFFSET, pack('V', 1)));
+
+        $reader = new ZipReader($filename);
+        $entries = iterator_to_array($reader->entries());
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+
+        try {
+            $reader->read($entries[0], 'bomb.bin');
+            self::fail('Expected the entry to be refused.');
+        } catch (PackageLimitException $exception) {
+            self::assertStringContainsString('expands beyond the 1 bytes', $exception->getMessage());
+        } finally {
+            $reader->close();
+        }
+
+        // Without a bound on what one read hands to zlib this is the whole 16 MiB.
+        self::assertLessThan(4 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
     public function testAnEntryThatExpandsPastItsDeclaredSizeIsStoppedWhileItIsRead(): void
     {
         $filename = $this->corruptedPackage(self::UNCOMPRESSED_SIZE_OFFSET, pack('V', 32));

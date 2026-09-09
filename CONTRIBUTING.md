@@ -47,6 +47,13 @@ Measure opening staged file readers separately from staging and full reads:
 XDEBUG_MODE=off composer benchmark-staged-streams
 ```
 
+Measure internal relationship walks on packages without relationships, including
+memory retained after the operation (five-run medians, construction excluded):
+
+```shell
+XDEBUG_MODE=off composer benchmark-relationships
+```
+
 Run the optional LibreOffice interoperability test with:
 
 ```shell

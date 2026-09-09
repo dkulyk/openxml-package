@@ -447,7 +447,7 @@ final class OpenXmlPackage implements PackageInterface
         }
 
         foreach ([null, ...$this->relationshipSourceNames()] as $sourcePartName) {
-            foreach ($this->getRelationships($sourcePartName) as $relationship) {
+            foreach ($this->existingRelationships($sourcePartName) ?? [] as $relationship) {
                 if ($relationship->isExternal()) {
                     continue;
                 }
@@ -578,6 +578,21 @@ final class OpenXmlPackage implements PackageInterface
         // Kept for the package's lifetime: every whole-package operation walks all
         // relationships, and re-parsing each .rels on each walk dominated them.
         return $this->relationships[$cacheKey] = $relationships;
+    }
+
+    /** Internal walks must not create a live collection for a source with no relationships. */
+    private function existingRelationships(?string $sourcePartName): ?Relationships
+    {
+        $cached = $this->relationships[strtolower($sourcePartName ?? '')] ?? null;
+        if ($cached !== null) {
+            return $cached;
+        }
+        $entryName = PartName::entry($this->relationshipsPartName($sourcePartName));
+        if (!$this->container()->has($entryName)) {
+            return null;
+        }
+
+        return $this->getRelationships($sourcePartName);
     }
 
     public function addRelationship(
@@ -723,8 +738,12 @@ final class OpenXmlPackage implements PackageInterface
         /** @var array<string, Relationships> $relationshipsBySource */
         $relationshipsBySource = [];
         foreach ([null, ...$sourcePartNames] as $sourcePartName) {
+            $relationships = $this->existingRelationships($sourcePartName);
+            if ($relationships === null) {
+                continue;
+            }
             $key = $sourcePartName ?? '';
-            $relationshipsBySource[$key] = $this->getRelationships($sourcePartName);
+            $relationshipsBySource[$key] = $relationships;
 
             foreach ($relationshipsBySource[$key] as $relationship) {
                 if (!in_array($relationship->getType(), self::signatureRelationshipTypes(), true)) {
@@ -794,7 +813,10 @@ final class OpenXmlPackage implements PackageInterface
         }
 
         try {
-            return $this->getRelationships()->getByType(RelationshipType::DIGITAL_SIGNATURE_ORIGIN) !== [];
+            $relationships = $this->existingRelationships(null);
+
+            return $relationships !== null
+                && $relationships->getByType(RelationshipType::DIGITAL_SIGNATURE_ORIGIN) !== [];
         } catch (OpenXmlException) {
             return true;
         }
@@ -838,7 +860,10 @@ final class OpenXmlPackage implements PackageInterface
 
         foreach ([null, ...$partNames] as $sourcePartName) {
             try {
-                $relationships = $this->getRelationships($sourcePartName);
+                $relationships = $this->existingRelationships($sourcePartName);
+                if ($relationships === null) {
+                    continue;
+                }
             } catch (OpenXmlException $exception) {
                 $sourceDescription = $sourcePartName ?? 'the package';
                 $issues[] = sprintf(
@@ -900,7 +925,7 @@ final class OpenXmlPackage implements PackageInterface
         return new PackageRepairer(
             $this->container(),
             $this->contentTypes,
-            fn(?string $sourcePartName): Relationships => $this->getRelationships($sourcePartName),
+            fn(?string $sourcePartName): ?Relationships => $this->existingRelationships($sourcePartName),
             function (): void {
                 $this->rebuildPartNameIndex();
                 $this->changed = true;
@@ -1055,7 +1080,7 @@ final class OpenXmlPackage implements PackageInterface
     {
         $changes = [];
         foreach ([null, ...$this->relationshipSourceNames()] as $relationshipSource) {
-            foreach ($this->getRelationships($relationshipSource) as $relationship) {
+            foreach ($this->existingRelationships($relationshipSource) ?? [] as $relationship) {
                 if ($relationship->isExternal()) {
                     continue;
                 }

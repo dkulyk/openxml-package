@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Changed
+
+- Validation, repair, inbound-reference lookup, part moves/removal, and signature removal
+  no longer create and retain empty relationship collections for parts without
+  a relationship part. Explicitly requested collections remain live and writable.
+
 ## [0.10.0] - 2026-09-07
 
 ### Added

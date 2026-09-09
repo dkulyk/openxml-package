@@ -195,7 +195,7 @@ final class ZipContainer implements ContainerInterface
         $owner = new StreamOwner(function (): void {
             --$this->openSourceStreams;
         });
-        if (!stream_context_set_option($stream, 'dk-openxml', 'container-owner', $owner)) {
+        if (!stream_context_set_option($stream, 'openxml', 'container-owner', $owner)) {
             fclose($stream);
 
             throw new OpenXmlException(sprintf('Unable to bind ZIP entry stream "%s" to its container.', $name));
@@ -366,7 +366,7 @@ final class ZipContainer implements ContainerInterface
         }
         $this->assertWriteWithinLimits($name, $entry->uncompressedSize);
 
-        $options = stream_context_get_options($stream)['dk-openxml'] ?? null;
+        $options = stream_context_get_options($stream)['openxml'] ?? null;
         $owner = is_array($options) ? ($options['container-owner'] ?? null) : null;
         $this->staged[$name] = new StagedZipEntry($wrapper->reader(), $entry, $owner);
         $this->setEntry($name, $entry->uncompressedSize);

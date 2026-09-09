@@ -17,7 +17,7 @@ use DK\OpenXml\Exception\OpenXmlException;
  */
 final class InflateStream
 {
-    public const SCHEME = 'dk-openxml-zip';
+    public const SCHEME = 'openxml-zip';
 
     /** @var resource|null Set by PHP before stream_open(). */
     public $context;

@@ -45,7 +45,7 @@ final class StagedFile implements StagedContents
         }
         // Bind to the opened resource: plain file streams need not retain the
         // context passed to fopen(). Retain only this snapshot, not the container.
-        if (!stream_context_set_option($stream, 'dk-openxml', 'staged-file-owner', $this)) {
+        if (!stream_context_set_option($stream, 'openxml', 'staged-file-owner', $this)) {
             fclose($stream);
 
             throw new OpenXmlException(sprintf('Unable to bind staged part stream "%s" to its file.', $name));

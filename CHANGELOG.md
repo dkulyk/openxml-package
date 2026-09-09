@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- A part copied from one open package to another moves its compressed bytes as
+  they are, when nothing has read from its stream and the destination wants the
+  compression the source used. Moving a 16 MiB part goes from 99 ms to 0.4 ms.
+  No API changes; the source file must not change before the destination is
+  saved, and one that does raises `ConcurrentModificationException`.
+
 ### Removed
 
 - **Breaking:** `ext-zip` is no longer required. The runtime now needs PHP 8.1,

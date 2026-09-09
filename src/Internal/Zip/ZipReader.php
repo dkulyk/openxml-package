@@ -31,6 +31,11 @@ final class ZipReader
         private readonly PackageLimits $limits = new PackageLimits(),
     ) {}
 
+    public function filename(): string
+    {
+        return $this->filename;
+    }
+
     /**
      * The archive's directory, one entry at a time.
      *

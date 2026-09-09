@@ -37,6 +37,9 @@ final class InflateStream
 
     private int $position = 0;
 
+    /** Whether the caller has asked this stream for anything yet. */
+    private bool $touched = false;
+
     /**
      * @return resource
      */
@@ -76,8 +79,30 @@ final class InflateStream
         return true;
     }
 
+    /**
+     * A stream nobody has read from still holds the entry exactly as the archive
+     * stores it, so a container asked to copy it can move the compressed bytes
+     * instead of decoding and re-encoding them.
+     */
+    public function untouched(): bool
+    {
+        return !$this->touched;
+    }
+
+    public function reader(): ZipReader
+    {
+        return $this->reader;
+    }
+
+    public function entry(): Entry
+    {
+        return $this->entry;
+    }
+
     public function stream_read(int $count): string
     {
+        $this->touched = true;
+
         // The buffer is consumed by moving an offset through it rather than by
         // reslicing it: a part decodes to far more than one read asks for, and
         // dropping the front of a multi-megabyte string on every read costs more
@@ -149,6 +174,7 @@ final class InflateStream
         $this->buffer = '';
         $this->offset = 0;
         $this->position = 0;
+        $this->touched = false;
     }
 
     private static function register(): void

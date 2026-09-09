@@ -79,7 +79,7 @@ final class MaterializationPool
             return $this->directory;
         }
 
-        $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'dk-openxml-' . bin2hex(random_bytes(12));
+        $directory = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'openxml-' . bin2hex(random_bytes(12));
         if (!@mkdir($directory, 0700) && !is_dir($directory)) {
             throw new OpenXmlException(sprintf('Unable to create materialization directory "%s".', $directory));
         }

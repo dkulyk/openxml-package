@@ -487,6 +487,17 @@ final class ZipContainer implements ContainerInterface
             ));
         }
 
+        // A stream opened for appending puts every write at the end of the file
+        // whatever fseek() was told, and reports a position that is not where the
+        // bytes went, so neither a patched header nor an entry offset can be
+        // trusted. Refused rather than written wrongly.
+        if (str_contains($mode, 'a')) {
+            throw new \InvalidArgumentException(sprintf(
+                'A package cannot be written to a stream opened for appending; mode "%s" ignores seeks. Open the destination with "w", "x" or "c".',
+                $mode,
+            ));
+        }
+
         $this->assertSourceUnchanged();
 
         $writer = new ZipWriter($destination);

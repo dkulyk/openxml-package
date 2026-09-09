@@ -333,9 +333,12 @@ is gone from that output. Saving to a file therefore keeps producing exactly
 what it did before.
 
 The destination must be open for writing; a read-only handle is refused as an
-argument rather than failing partway through the archive. Writing starts at the
-stream's current position, so a destination that already holds bytes still gets
-entry offsets that point where the entries really are.
+argument rather than failing partway through the archive. A stream opened for
+appending (`a`, `a+`) is refused too: every write to one lands at the end of the
+file whatever `fseek()` was told, so neither a patched header nor an entry offset
+would be where the archive says it is. Open the destination with `w`, `x` or `c`.
+Writing starts at the stream's current position, so a destination that already
+holds bytes still gets entry offsets that point where the entries really are.
 
 A custom stream wrapper that cannot seek must report `seekable` as `false` from
 its metadata. Userland wrappers report `true` by default; one that then refuses

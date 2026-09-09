@@ -132,6 +132,25 @@ final class StreamedSaveTest extends TestCase
         }
     }
 
+    /**
+     * An append stream writes at the end of the file whatever fseek() was told,
+     * so patching a local header would append twelve bytes instead of replacing
+     * them and leave an archive ext-zip reports as inconsistent.
+     */
+    public function testSaveToRejectsAStreamOpenedForAppending(): void
+    {
+        $appending = fopen($this->filename, 'a+b');
+        self::assertNotFalse($appending);
+
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('opened for appending');
+            self::package()->saveTo($appending);
+        } finally {
+            fclose($appending);
+        }
+    }
+
     public function testSaveToRejectsAnythingButAStream(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -120,7 +120,9 @@ final class ZipWriter
         $offset = $this->position();
         $this->assertRepresentable($name, strlen($contents), strlen($payload));
         [$dosTime, $dosDate] = Dos::stamp();
-        $crc = crc32($contents);
+        $checksum = new Crc32();
+        $checksum->update($contents);
+        $crc = $checksum->value();
         $this->writeLocalHeader($name, $method, $crc, strlen($payload), strlen($contents), $dosTime, $dosDate);
         $this->write($payload, $name);
         $this->record($name, $method, $crc, strlen($payload), strlen($contents), $dosTime, $dosDate, $offset);
@@ -137,7 +139,7 @@ final class ZipWriter
         // Sizes are unknown until the stream ends; the header is patched below.
         $this->writeLocalHeader($name, $method, 0, 0, 0, $dosTime, $dosDate);
 
-        $checksum = hash_init('crc32b');
+        $checksum = new Crc32();
         $deflate = null;
         if ($compress) {
             $deflate = deflate_init(ZLIB_ENCODING_RAW, ['level' => self::LEVEL]);
@@ -157,7 +159,7 @@ final class ZipWriter
                 break;
             }
             $uncompressedSize += strlen($chunk);
-            hash_update($checksum, $chunk);
+            $checksum->update($chunk);
             $compressedSize += $this->write(
                 $deflate === null ? $chunk : self::deflated($deflate, $chunk, ZLIB_NO_FLUSH, $name),
                 $name,
@@ -167,7 +169,7 @@ final class ZipWriter
             $compressedSize += $this->write(self::deflated($deflate, '', ZLIB_FINISH, $name), $name);
         }
 
-        $crc = Binary::integers(unpack('N1crc', hash_final($checksum, true)))['crc'];
+        $crc = $checksum->value();
         $this->assertRepresentable($name, $uncompressedSize, $compressedSize);
         $this->patchLocalHeader($offset, $crc, $compressedSize, $uncompressedSize, $name);
         $this->record($name, $method, $crc, $compressedSize, $uncompressedSize, $dosTime, $dosDate, $offset);
@@ -204,7 +206,9 @@ final class ZipWriter
 
         $count = count($this->written);
         $directorySize = strlen($directory);
-        $zip64 = $count > self::SENTINEL_16
+        // 0xFFFF in the record is how a reader is told to look for ZIP64, so an
+        // archive that really holds that many entries must carry one.
+        $zip64 = $count >= self::SENTINEL_16
             || $directoryOffset >= self::SENTINEL_32
             || $directorySize >= self::SENTINEL_32;
 

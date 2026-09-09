@@ -40,9 +40,20 @@ decoder stops the moment a part produces more bytes than its directory record
 declares. A part is accepted only when its decompressed size, its checksum and
 the number of compressed bytes the decoder consumed all match that record.
 
+Checking that costs nothing beyond the decoding itself. PHP computes CRC-32 a
+byte at a time, which dominated everything else the reader did, so a deflated
+entry is handed to zlib as a gzip stream instead: gzip is the same deflate data
+between a fixed header and a trailer carrying the CRC-32 and the length, and the
+ZIP directory has already told us both. zlib checks them itself as it decodes.
+Stored entries, which have no deflate stream to wrap, and parts the library
+writes take the same checksum from the trailer of a gzip stream of their own.
+
 Streamed writes are staged in temporary storage. Reads of unchanged entries go
 through a stream wrapper over the decoder, so a part is decoded as it is read.
-The wrapper reads forward and rewinds; it does not seek elsewhere. A container
+The wrapper reads forward and rewinds; it does not seek elsewhere. It sets the
+stream's buffer to one decoded chunk, so a caller reading in small pieces is
+served from that buffer in C rather than calling into PHP for each piece, and a
+chunk that fits what was asked for is handed over without being copied at all. A container
 opens its source archive once, shares it between active entry streams, and is
 retained by each stream context until the caller closes it. Complete output is validated in a same-directory temporary
 file before atomic replacement.

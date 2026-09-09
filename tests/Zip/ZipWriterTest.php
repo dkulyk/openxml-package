@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace DK\OpenXml\Tests\Zip;
 
+use DK\OpenXml\Internal\Zip\ZipReader;
 use DK\OpenXml\Internal\Zip\ZipWriter;
 use DK\OpenXml\OpenXmlPackage;
+use DK\OpenXml\Security\PackageLimits;
 use DK\OpenXml\Tests\Support\ArchiveAssertions;
 use DK\OpenXml\Tests\Support\ZipFixture;
 use PHPUnit\Framework\TestCase;
@@ -25,6 +27,43 @@ final class ZipWriterTest extends TestCase
             }
         }
         $this->files = [];
+    }
+
+    public function testAnArchiveOfExactlyTheCountThatMeansZip64CarriesIt(): void
+    {
+        // 65535 in the end record is how a reader is told to look for a ZIP64
+        // record, so an archive that really holds that many entries needs one.
+        $count = 0xFFFF;
+        $filename = $this->file();
+        $handle = fopen($filename, 'w+b');
+        self::assertNotFalse($handle);
+        $writer = new ZipWriter($handle);
+        for ($i = 0; $i < $count; ++$i) {
+            $writer->addString(sprintf('entry%05d.bin', $i), '', false);
+        }
+        $writer->finish();
+        fclose($handle);
+
+        // Counted through ext-zip rather than listed: a list of this many entries
+        // costs more memory than the archive does.
+        self::assertArchiveConsistent($filename);
+        $archive = new \ZipArchive();
+        self::assertTrue($archive->open($filename, \ZipArchive::RDONLY) === true);
+        self::assertSame($count, $archive->numFiles);
+        $archive->close();
+
+        $reader = new ZipReader($filename, new PackageLimits(maximumEntries: $count));
+        $read = 0;
+
+        try {
+            foreach ($reader->entries() as $_entry) {
+                ++$read;
+            }
+        } finally {
+            $reader->close();
+        }
+
+        self::assertSame($count, $read);
     }
 
     public function testUnchangedEntriesKeepTheirCompressedBytes(): void

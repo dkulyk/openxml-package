@@ -53,6 +53,10 @@ final class InflateStream
         if ($stream === false) {
             throw new OpenXmlException(sprintf('Unable to open ZIP entry "%s".', $reportedName));
         }
+        // Ask PHP to fill its buffer a whole decoded chunk at a time. A caller
+        // reading in small pieces then gets them sliced in C, and this wrapper is
+        // asked for bytes once per chunk instead of once per read.
+        stream_set_chunk_size($stream, EntryInflater::CHUNK);
 
         return $stream;
     }
@@ -102,6 +106,25 @@ final class InflateStream
     public function stream_read(int $count): string
     {
         $this->touched = true;
+
+        if ($this->offset === strlen($this->buffer)) {
+            // Nothing held back. A decoded chunk that fits the request is handed
+            // over as it stands, which is the usual case once PHP asks for bytes a
+            // chunk at a time, and costs no copy at all.
+            $chunk = '';
+            while ($chunk === '' && !$this->inflater->finished()) {
+                $chunk = $this->inflater->next();
+            }
+            if (strlen($chunk) <= $count) {
+                $this->buffer = '';
+                $this->offset = 0;
+                $this->position += strlen($chunk);
+
+                return $chunk;
+            }
+            $this->buffer = $chunk;
+            $this->offset = 0;
+        }
 
         // The buffer is consumed by moving an offset through it rather than by
         // reslicing it: a part decodes to far more than one read asks for, and

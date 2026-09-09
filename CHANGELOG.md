@@ -6,11 +6,25 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added
 
+- Checksums come from zlib instead of PHP. A deflated entry is handed to zlib as
+  a gzip stream, so its checksum and length are verified while it is decoded
+  rather than in a second pass. Decoding 16 MiB of incompressible data goes from
+  33 ms to 3.9 ms, and reading a package of 2000 small parts is about a tenth
+  faster. A part stream hands decoded chunks over without
+  copying them, so reading 16 MiB through `openStream()` costs 2.9 ms against
+  3.4 ms through `ZipArchive::getStream()`.
 - A part copied from one open package to another moves its compressed bytes as
   they are, when nothing has read from its stream and the destination wants the
   compression the source used. Moving a 16 MiB part goes from 99 ms to 0.4 ms.
   No API changes; the source file must not change before the destination is
   saved, and one that does raises `ConcurrentModificationException`.
+
+### Fixed
+
+- An entry whose directory understates how much it holds is refused after about
+  a megabyte rather than after the whole expansion.
+- An archive of exactly 65535 entries is written with a ZIP64 record; without one
+  this library refused to read back what it had just written.
 
 ### Removed
 
@@ -35,8 +49,8 @@ All notable changes to this project will be documented in this file. The format 
 - Entry contents are decompressed by the library. A part is decoded in chunks,
   so reading one as a stream no longer materialises it, and it is accepted only
   when its size, its CRC-32 and the number of compressed bytes consumed all agree
-  with its directory record. Reading a large part is slower for now: 16 MiB of
-  incompressible data goes from 43 ms to 70 ms, nearly all of it the checksum.
+  with its directory record. Opening a package and opening a part stream both got
+  faster.
 
 ## [0.10.0] - 2026-09-07
 

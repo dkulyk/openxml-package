@@ -47,6 +47,11 @@ opens its source archive once, shares it between active entry streams, and is
 retained by each stream context until the caller closes it. Complete output is validated in a same-directory temporary
 file before atomic replacement.
 
+A part written from a stream that this library opened for an unchanged entry of
+another package is staged as that entry rather than as its contents, so the copy
+neither inflates nor deflates. The object that keeps the source container alive
+travels with the staging, so the source stream can be closed straight away.
+
 A save writes the output archive itself. Unchanged entries keep their compressed
 representation: those that are adjacent in the source archive are copied in one
 pass with their local headers, and the rest one at a time. Only replaced,

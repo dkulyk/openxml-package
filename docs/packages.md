@@ -246,6 +246,24 @@ part is read or the package is saved rather than copied now, so it must stay
 where it is until then. Use the stream methods for other PHP stream wrappers, and
 when the package must hold a snapshot the caller can no longer affect.
 
+Copying a part from one open package to another is a special case of the same
+deferral:
+
+```php
+$destination->addPartFromStream(
+    '/ppt/media/image1.png',
+    'image/png',
+    $source->getPart('/ppt/media/image1.png')->openStream(),
+);
+```
+
+The stream still knows which entry it came from, so as long as nothing has read
+from it and the destination is happy with the compression the source used, the
+compressed bytes move across without being decoded and re-encoded. The source
+package may be closed before the destination is saved. Its file must not change
+in the meantime, exactly as for a part added from a path, and one that does
+raises `ConcurrentModificationException` at the save.
+
 ## Atomic edits
 
 Mutations remain staged until `save()` or `saveAs()`:

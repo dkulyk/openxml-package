@@ -11,6 +11,7 @@ use DK\OpenXml\Internal\StreamOwner;
 use DK\OpenXml\Internal\Zip\CentralDirectory;
 use DK\OpenXml\Internal\Zip\Entry;
 use DK\OpenXml\Internal\Zip\EntryName;
+use DK\OpenXml\Internal\Zip\InflateStream;
 use DK\OpenXml\Internal\Zip\ZipReader;
 use DK\OpenXml\Internal\Zip\ZipWriter;
 use DK\OpenXml\Security\PackageLimits;
@@ -43,6 +44,8 @@ final class ZipContainer implements ContainerInterface
 
     /** Flag bit 3: the entry's sizes and CRC follow the data instead of preceding it. */
     private const FLAG_DATA_DESCRIPTOR = 0x0008;
+    private const METHOD_STORE = 0;
+    private const METHOD_DEFLATE = 8;
 
     /** @var array<string, true> Staged entries written without deflate. */
     private array $stored = [];
@@ -290,6 +293,9 @@ final class ZipContainer implements ContainerInterface
             throw new \InvalidArgumentException('Part contents stream is not readable.');
         }
         self::assertSafeEntryName($name);
+        if ($this->carry($name, $stream, $compress)) {
+            return;
+        }
         $staged = tmpfile();
         if ($staged === false) {
             throw new OpenXmlException('Unable to create temporary storage for streamed part contents.');
@@ -327,6 +333,47 @@ final class ZipContainer implements ContainerInterface
 
             throw $exception;
         }
+    }
+
+    /**
+     * Move a part between packages without decoding it.
+     *
+     * A stream this library handed out for an unchanged ZIP entry knows which
+     * entry it came from. If nobody has read from it and the destination wants the
+     * same compression the source already used, the entry is staged as it stands
+     * and its bytes travel verbatim at save time.
+     *
+     * @param resource $stream
+     */
+    private function carry(string $name, $stream, bool $compress): bool
+    {
+        $wrapper = stream_get_meta_data($stream)['wrapper_data'] ?? null;
+        if (!$wrapper instanceof InflateStream || !$wrapper->untouched()) {
+            return false;
+        }
+        $entry = $wrapper->entry();
+        // The caller asked for a representation; carrying only makes sense when the
+        // source already has that one. Anything else is re-encoded as usual.
+        if ($entry->method !== ($compress ? self::METHOD_DEFLATE : self::METHOD_STORE)) {
+            return false;
+        }
+        if ($entry->uncompressedSize > $this->limits->maximumPartBytes) {
+            throw new PackageLimitException(sprintf(
+                'Part "%s" exceeds the configured maximum of %d bytes.',
+                $name,
+                $this->limits->maximumPartBytes,
+            ));
+        }
+        $this->assertWriteWithinLimits($name, $entry->uncompressedSize);
+
+        $options = stream_context_get_options($stream)['dk-openxml'] ?? null;
+        $owner = is_array($options) ? ($options['container-owner'] ?? null) : null;
+        $this->staged[$name] = new StagedZipEntry($wrapper->reader(), $entry, $owner);
+        $this->setEntry($name, $entry->uncompressedSize);
+        $this->setCompression($name, $compress);
+        unset($this->moved[$name]);
+
+        return true;
     }
 
     public function writePath(string $name, string $path, bool $compress = true): void
@@ -495,6 +542,11 @@ final class ZipContainer implements ContainerInterface
     {
         $contents = $this->resolveStaged($entryName);
         $compress = !isset($this->stored[$entryName]);
+        if ($contents instanceof StagedZipEntry) {
+            $writer->addRaw($entryName, $contents->entry(), $contents->reader());
+
+            return;
+        }
         if (is_string($contents)) {
             $writer->addString($entryName, $contents, $compress);
 

@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace DK\OpenXml\Tests;
 
-use DK\OpenXml\Internal\Zip\CentralDirectory;
 use DK\OpenXml\OpenXmlPackage;
-use DK\OpenXml\Security\PackageLimits;
 use DK\OpenXml\Tests\Support\ArchiveAssertions;
 use PHPUnit\Framework\TestCase;
 
@@ -62,6 +60,45 @@ final class StreamedSaveTest extends TestCase
         // eligible to be carried compressed into a later save.
         self::package()->saveAs($this->filename);
         self::assertSame(0, self::entryFlags($this->filename)['media/payload.bin'] & self::FLAG_DATA_DESCRIPTOR);
+    }
+
+    /**
+     * A reopened package carries its untouched entries from the source and puts
+     * only the rewritten part through the stream path, so one archive ends up
+     * holding both header forms. That mix is what a consumer is handed.
+     */
+    public function testAReopenedPackageDescribesOnlyTheRewrittenPartWithADescriptor(): void
+    {
+        self::package()->saveAs($this->filename);
+
+        $package = OpenXmlPackage::open($this->filename);
+        $document = fopen('php://temp', 'r+b');
+        self::assertNotFalse($document);
+        fwrite($document, '<document>rewritten</document>');
+        rewind($document);
+        $package->writePartFromStream('/document.xml', $document);
+
+        $streamed = $this->filename . '-reopened';
+        file_put_contents($streamed, self::captured($package));
+        fclose($document);
+        unset($package);
+
+        try {
+            self::assertArchiveConsistent($streamed);
+
+            $flags = self::entryFlags($streamed);
+            self::assertSame(
+                self::FLAG_DATA_DESCRIPTOR,
+                $flags['document.xml'] & self::FLAG_DATA_DESCRIPTOR,
+            );
+            // Carried compressed from the source, header and all.
+            self::assertSame(0, $flags['media/payload.bin'] & self::FLAG_DATA_DESCRIPTOR);
+
+            self::assertSame('<document>rewritten</document>', self::archiveContents($streamed, 'document.xml'));
+            self::assertSame(str_repeat('payload', 4096), self::archiveContents($streamed, 'media/payload.bin'));
+        } finally {
+            unlink($streamed);
+        }
     }
 
     public function testStreamedAndFileWrittenPackagesHoldTheSameEntries(): void
@@ -192,47 +229,6 @@ final class StreamedSaveTest extends TestCase
         fclose($payload);
 
         return $package;
-    }
-
-    /** The bytes saveTo() puts on a stream that cannot seek. */
-    private static function captured(OpenXmlPackage $package): string
-    {
-        $output = fopen('php://output', 'wb');
-        self::assertNotFalse($output);
-        self::assertFalse(stream_get_meta_data($output)['seekable']);
-
-        ob_start();
-
-        try {
-            $package->saveTo($output);
-        } finally {
-            fclose($output);
-            $bytes = ob_get_clean();
-        }
-
-        self::assertNotFalse($bytes);
-
-        return $bytes;
-    }
-
-    /** @return array<string, int> */
-    private static function entryFlags(string $filename): array
-    {
-        $handle = fopen($filename, 'rb');
-        self::assertNotFalse($handle);
-
-        try {
-            $limits = new PackageLimits();
-            $eocd = CentralDirectory::locate($handle, (int) filesize($filename), $limits);
-            $flags = [];
-            foreach (CentralDirectory::scan($handle, $eocd, $limits) as $entry) {
-                $flags[$entry->name] = $entry->flags;
-            }
-
-            return $flags;
-        } finally {
-            fclose($handle);
-        }
     }
 
     private static function archiveContents(string $filename, string $entryName): string

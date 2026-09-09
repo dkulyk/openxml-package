@@ -131,6 +131,19 @@ final class EntryReadingTest extends TestCase
         OpenXmlPackage::open($filename)->getPart('/word/document.xml')->getContents();
     }
 
+    public function testAFewBytesBeyondTheCompressedStreamAreRefusedToo(): void
+    {
+        $archive = $this->packageBytes();
+        $actual = self::field($archive, 'word/document.xml', self::COMPRESSED_SIZE_OFFSET);
+        $filename = $this->write(self::patch($archive, 'word/document.xml', self::COMPRESSED_SIZE_OFFSET, pack('V', $actual + 2)));
+
+        // Too few to be read as a whole trailer, so they are swallowed as part of
+        // one and the check they should have carried fails instead.
+        $this->expectException(OpenXmlException::class);
+        $this->expectExceptionMessage('checksum does not match');
+        OpenXmlPackage::open($filename)->getPart('/word/document.xml')->getContents();
+    }
+
     public function testAnEntryThatExpandsPastItsDeclaredSizeIsStoppedWhileItIsRead(): void
     {
         $filename = $this->corruptedPackage(self::UNCOMPRESSED_SIZE_OFFSET, pack('V', 32));

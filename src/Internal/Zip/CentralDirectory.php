@@ -52,7 +52,7 @@ final class CentralDirectory
         }
 
         $tailLength = min($fileSize, self::EOCD_LENGTH + self::MAXIMUM_COMMENT);
-        $tail = self::read($handle, $tailLength, $fileSize - $tailLength);
+        $tail = Binary::read($handle, $tailLength, $fileSize - $tailLength);
 
         $position = null;
         for ($candidate = $tailLength - self::EOCD_LENGTH; $candidate >= 0; --$candidate) {
@@ -61,7 +61,7 @@ final class CentralDirectory
             }
             // A comment that runs to the last byte tells the record apart from
             // the same four bytes appearing inside a comment.
-            if ($candidate + self::EOCD_LENGTH + self::uint16($tail, $candidate + 20) === $tailLength) {
+            if ($candidate + self::EOCD_LENGTH + Binary::uint16($tail, $candidate + 20) === $tailLength) {
                 $position = $candidate;
 
                 break;
@@ -72,11 +72,11 @@ final class CentralDirectory
         }
 
         $recordOffset = $fileSize - $tailLength + $position;
-        $disk = self::uint16($tail, $position + 4);
-        $directoryDisk = self::uint16($tail, $position + 6);
-        $entryCount = self::uint16($tail, $position + 10);
-        $directorySize = self::uint32($tail, $position + 12);
-        $directoryOffset = self::uint32($tail, $position + 16);
+        $disk = Binary::uint16($tail, $position + 4);
+        $directoryDisk = Binary::uint16($tail, $position + 6);
+        $entryCount = Binary::uint16($tail, $position + 10);
+        $directorySize = Binary::uint32($tail, $position + 12);
+        $directoryOffset = Binary::uint32($tail, $position + 16);
         $directoryEnd = $recordOffset;
 
         if (
@@ -134,7 +134,7 @@ final class CentralDirectory
                 $wanted = min(self::WINDOW, $remaining);
                 // Absolute offsets: a caller may move the handle while this
                 // generator is suspended between entries.
-                $buffer .= self::read($handle, $wanted, $cursor);
+                $buffer .= Binary::read($handle, $wanted, $cursor);
                 $cursor += $wanted;
                 $remaining -= $wanted;
             }
@@ -143,7 +143,7 @@ final class CentralDirectory
             if ($available < self::RECORD_LENGTH) {
                 throw self::corrupt('the directory ends inside a record');
             }
-            $record = self::integers(unpack(
+            $record = Binary::integers(unpack(
                 'Vsignature/x4/vflags/vmethod/vtime/vdate/Vcrc/Vcompressed/Vuncompressed'
                     . '/vnameLength/vextraLength/vcommentLength/x8/Voffset',
                 $buffer,
@@ -249,8 +249,8 @@ final class CentralDirectory
         $length = strlen($extra);
         $position = 0;
         while ($position + 4 <= $length) {
-            $identifier = self::uint16($extra, $position);
-            $size = self::uint16($extra, $position + 2);
+            $identifier = Binary::uint16($extra, $position);
+            $size = Binary::uint16($extra, $position + 2);
             $position += 4;
             if ($position + $size > $length) {
                 break;
@@ -264,15 +264,15 @@ final class CentralDirectory
             // Each field is present only when its 32-bit counterpart is a sentinel.
             $end = $position + $size;
             if ($uncompressedSize === self::SENTINEL_32) {
-                $uncompressedSize = self::uint64($extra, self::zip64Field($position, $end));
+                $uncompressedSize = Binary::uint64($extra, self::zip64Field($position, $end));
                 $position += 8;
             }
             if ($compressedSize === self::SENTINEL_32) {
-                $compressedSize = self::uint64($extra, self::zip64Field($position, $end));
+                $compressedSize = Binary::uint64($extra, self::zip64Field($position, $end));
                 $position += 8;
             }
             if ($localHeaderOffset === self::SENTINEL_32) {
-                $localHeaderOffset = self::uint64($extra, self::zip64Field($position, $end));
+                $localHeaderOffset = Binary::uint64($extra, self::zip64Field($position, $end));
                 $position += 8;
             }
 
@@ -300,7 +300,7 @@ final class CentralDirectory
             return false;
         }
 
-        return self::read($handle, 4, $recordOffset - self::ZIP64_LOCATOR_LENGTH)
+        return Binary::read($handle, 4, $recordOffset - self::ZIP64_LOCATOR_LENGTH)
             === self::ZIP64_LOCATOR_SIGNATURE;
     }
 
@@ -314,15 +314,15 @@ final class CentralDirectory
         if ($recordOffset < self::ZIP64_LOCATOR_LENGTH) {
             throw self::corrupt('a ZIP64 archive has no locator');
         }
-        $locator = self::read($handle, self::ZIP64_LOCATOR_LENGTH, $recordOffset - self::ZIP64_LOCATOR_LENGTH);
+        $locator = Binary::read($handle, self::ZIP64_LOCATOR_LENGTH, $recordOffset - self::ZIP64_LOCATOR_LENGTH);
         if (substr($locator, 0, 4) !== self::ZIP64_LOCATOR_SIGNATURE) {
             throw self::corrupt('a ZIP64 archive has no locator');
         }
 
-        $zip64Offset = self::uint64($locator, 8);
+        $zip64Offset = Binary::uint64($locator, 8);
         $record = null;
         if ($zip64Offset + self::ZIP64_EOCD_LENGTH <= $fileSize) {
-            $candidate = self::read($handle, self::ZIP64_EOCD_LENGTH, $zip64Offset);
+            $candidate = Binary::read($handle, self::ZIP64_EOCD_LENGTH, $zip64Offset);
             if (substr($candidate, 0, 4) === self::ZIP64_EOCD_SIGNATURE) {
                 $record = $candidate;
             }
@@ -334,82 +334,24 @@ final class CentralDirectory
             if ($zip64Offset < 0) {
                 throw self::corrupt('the ZIP64 end of central directory record is missing');
             }
-            $record = self::read($handle, self::ZIP64_EOCD_LENGTH, $zip64Offset);
+            $record = Binary::read($handle, self::ZIP64_EOCD_LENGTH, $zip64Offset);
             if (substr($record, 0, 4) !== self::ZIP64_EOCD_SIGNATURE) {
                 throw self::corrupt('the ZIP64 end of central directory record is missing');
             }
         }
 
         return [
-            self::uint32($record, 16),
-            self::uint32($record, 20),
-            self::uint64($record, 32),
-            self::uint64($record, 40),
-            self::uint64($record, 48),
+            Binary::uint32($record, 16),
+            Binary::uint32($record, 20),
+            Binary::uint64($record, 32),
+            Binary::uint64($record, 40),
+            Binary::uint64($record, 48),
             $zip64Offset,
         ];
     }
 
-    /**
-     * @param resource $handle
-     */
-    private static function read($handle, int $length, int $offset): string
-    {
-        if ($length === 0) {
-            return '';
-        }
-        $data = stream_get_contents($handle, $length, $offset);
-        if ($data === false || strlen($data) !== $length) {
-            throw self::corrupt('the file ends before a record it declares');
-        }
-
-        return $data;
-    }
-
-    private static function uint16(string $data, int $position): int
-    {
-        return self::integers(unpack('v1value', $data, $position))['value'];
-    }
-
-    private static function uint32(string $data, int $position): int
-    {
-        return self::integers(unpack('V1value', $data, $position))['value'];
-    }
-
-    private static function uint64(string $data, int $position): int
-    {
-        $value = self::integers(unpack('P1value', $data, $position))['value'];
-        if ($value < 0) {
-            throw new OpenXmlException('A ZIP64 value exceeds the largest integer this PHP build represents.');
-        }
-
-        return $value;
-    }
-
-    /**
-     * `unpack()` is typed as returning anything; every format this class uses
-     * yields integers, and a short input makes it fail outright.
-     *
-     * @param array<array-key, mixed>|false $record
-     *
-     * @return array<array-key, int>
-     */
-    private static function integers(array|false $record): array
-    {
-        if ($record === false) {
-            throw self::corrupt('a record is truncated');
-        }
-
-        $values = array_filter($record, is_int(...));
-        if (count($values) !== count($record)) {
-            throw self::corrupt('a record is truncated');
-        }
-
-        return $values;
-    }
-
     private static function corrupt(string $reason): OpenXmlException
     {
-        return new OpenXmlException(sprintf('The ZIP directory is corrupt: %s.', $reason));
+        return Binary::corrupt($reason);
     }
 }

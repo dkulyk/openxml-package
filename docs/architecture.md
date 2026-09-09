@@ -39,9 +39,14 @@ size. Entry contents are still read through ext-zip.
 Streamed writes are staged in temporary storage. Reads of unchanged entries use
 native lazy ZIP streams. A container opens its source archive once, shares it
 between active entry streams, and is retained by each stream context until the
-caller closes it. Unchanged entries also use ZIP copy-through during a save,
-preserving their compressed representation. Complete output is validated in a
-same-directory temporary file before atomic replacement.
+caller closes it. Complete output is validated in a same-directory temporary
+file before atomic replacement.
+
+A save writes the output archive itself. Unchanged entries keep their compressed
+representation: those that are adjacent in the source archive are copied in one
+pass with their local headers, and the rest one at a time. Only replaced,
+renamed and added entries are encoded. Content types are written first so that a
+consumer reading the package as a stream knows what every later part is.
 
 A weak internal registry coordinates containers for the same source path. Before
 replacement it closes idle archives held by this process and rejects the write if

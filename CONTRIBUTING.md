@@ -41,6 +41,13 @@ medians, with construction excluded):
 XDEBUG_MODE=off composer benchmark-removal
 ```
 
+Measure replacing one part of a package and writing the result, where every
+other part is carried to the output unchanged:
+
+```shell
+XDEBUG_MODE=off composer benchmark-save
+```
+
 Measure reading a package's ZIP directory, both for a full open and for format
 detection:
 

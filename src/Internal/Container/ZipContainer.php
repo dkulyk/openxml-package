@@ -9,7 +9,10 @@ use DK\OpenXml\Exception\PackageLimitException;
 use DK\OpenXml\Internal\SourceFileState;
 use DK\OpenXml\Internal\StreamOwner;
 use DK\OpenXml\Internal\Zip\CentralDirectory;
+use DK\OpenXml\Internal\Zip\Entry;
 use DK\OpenXml\Internal\Zip\EntryName;
+use DK\OpenXml\Internal\Zip\ZipReader;
+use DK\OpenXml\Internal\Zip\ZipWriter;
 use DK\OpenXml\Security\PackageLimits;
 
 /** @internal */
@@ -17,6 +20,12 @@ final class ZipContainer implements ContainerInterface
 {
     /** @var array<string, int> Uncompressed entry sizes. */
     private array $entries = [];
+
+    /** @var array<string, Entry> The source archive's directory, as it was when the package opened. */
+    private array $sourceEntries = [];
+
+    /** @var array<string, int> Position of each source entry in that directory. */
+    private array $sourceOrder = [];
 
     /** Running totals over live entries, so limit checks do not rescan the map on every write. */
     private int $liveBytes = 0;
@@ -32,10 +41,15 @@ final class ZipContainer implements ContainerInterface
     /** @var array<string, string> Destination entry names mapped to their source ZIP entry. */
     private array $moved = [];
 
+    /** Flag bit 3: the entry's sizes and CRC follow the data instead of preceding it. */
+    private const FLAG_DATA_DESCRIPTOR = 0x0008;
+
     /** @var array<string, true> Staged entries written without deflate. */
     private array $stored = [];
 
     private ?\ZipArchive $sourceArchive = null;
+
+    private ?ZipReader $sourceReader = null;
 
     private int $openSourceStreams = 0;
 
@@ -85,6 +99,8 @@ final class ZipContainer implements ContainerInterface
                         $limits->maximumPackageBytes,
                     ));
                 }
+                $container->sourceOrder[$entry->name] = count($container->sourceEntries);
+                $container->sourceEntries[$entry->name] = $entry;
                 $container->setEntry($entry->name, $entry->uncompressedSize);
             }
         } finally {
@@ -412,56 +428,106 @@ final class ZipContainer implements ContainerInterface
     public function saveAs(string $filename): void
     {
         $this->assertSourceUnchanged();
-        $copySource = $this->sourceFilename !== null && is_file($this->sourceFilename);
-        if ($copySource && !copy($this->sourceFilename, $filename)) {
-            throw new OpenXmlException(sprintf('Unable to copy source package to "%s".', $filename));
-        }
 
-        $archive = new \ZipArchive();
-        $flags = $copySource ? 0 : \ZipArchive::CREATE | \ZipArchive::OVERWRITE;
-        if ($archive->open($filename, $flags) !== true) {
+        $destination = fopen($filename, 'w+b');
+        if ($destination === false) {
             throw new OpenXmlException(sprintf('Unable to create package "%s".', $filename));
         }
 
         try {
-            foreach ($this->moved as $destination => $source) {
-                // move() only accepts a destination that is absent or removed,
-                // so an entry still under that name in the source archive is stale.
-                if ($archive->locateName($destination) !== false && !$archive->deleteName($destination)) {
-                    throw new OpenXmlException(sprintf('Unable to remove ZIP entry "%s".', $destination));
+            $writer = new ZipWriter($destination);
+            /** @var list<Entry> $run */
+            $run = [];
+            $flush = function () use ($writer, &$run): void {
+                if ($run !== []) {
+                    $writer->addRawRun($run, $this->sourceReader());
+                    $run = [];
                 }
-                if ($archive->locateName($source) === false || !$archive->renameName($source, $destination)) {
-                    throw new OpenXmlException(sprintf(
-                        'Unable to move ZIP entry "%s" to "%s".',
-                        $source,
-                        $destination,
-                    ));
-                }
-            }
-            foreach ($this->removed as $entryName => $_removed) {
-                if ($archive->locateName($entryName) !== false && !$archive->deleteName($entryName)) {
-                    throw new OpenXmlException(sprintf('Unable to remove ZIP entry "%s".', $entryName));
-                }
-            }
-            foreach (array_keys($this->staged) as $entryName) {
-                $contents = $this->resolveStaged($entryName);
-                $written = is_string($contents)
-                    ? $archive->addFromString($entryName, $contents)
-                    : $archive->addFile($contents->path($entryName), $entryName);
-                if (!$written) {
-                    throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $entryName));
-                }
-                if (isset($this->stored[$entryName]) && !$archive->setCompressionName($entryName, \ZipArchive::CM_STORE)) {
-                    throw new OpenXmlException(sprintf('Unable to store ZIP entry "%s" uncompressed.', $entryName));
-                }
-            }
-        } catch (\Throwable $exception) {
-            $archive->close();
+            };
 
-            throw $exception;
+            foreach ($this->saveOrder() as $entryName) {
+                if (array_key_exists($entryName, $this->staged)) {
+                    $flush();
+                    $this->writeStaged($writer, $entryName);
+
+                    continue;
+                }
+                // Unchanged and moved entries keep the bytes they already have.
+                $sourceName = $this->moved[$entryName] ?? $entryName;
+                $entry = $this->sourceEntries[$sourceName] ?? null;
+                if ($entry === null) {
+                    throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $sourceName));
+                }
+                // A renamed entry needs a header of its own, and one that defers its
+                // sizes to a trailing descriptor is rewritten rather than carried.
+                if ($sourceName !== $entryName || ($entry->flags & self::FLAG_DATA_DESCRIPTOR) !== 0) {
+                    $flush();
+                    $writer->addRaw($entryName, $entry, $this->sourceReader());
+
+                    continue;
+                }
+                if ($run !== [] && !$this->adjacentInSource($run[count($run) - 1], $entry)) {
+                    $flush();
+                }
+                $run[] = $entry;
+            }
+            $flush();
+            $writer->finish();
+        } finally {
+            fclose($destination);
         }
-        if (!$archive->close()) {
-            throw new OpenXmlException(sprintf('Unable to finalize package "%s".', $filename));
+    }
+
+    /**
+     * Content types come first so that a consumer reading the package as a stream
+     * knows what every later part is before it reaches it.
+     *
+     * @return list<string>
+     */
+    private function saveOrder(): array
+    {
+        $names = [];
+        foreach ($this->entries as $name => $_size) {
+            if (isset($this->removed[$name])) {
+                continue;
+            }
+            if ($name === CentralDirectory::CONTENT_TYPES) {
+                array_unshift($names, $name);
+
+                continue;
+            }
+            $names[] = $name;
+        }
+
+        return $names;
+    }
+
+    /**
+     * Two entries can travel together only if nothing of the source archive that
+     * this save is not carrying sits between them.
+     */
+    private function adjacentInSource(Entry $previous, Entry $entry): bool
+    {
+        return $this->sourceOrder[$entry->name] === $this->sourceOrder[$previous->name] + 1
+            && $entry->localHeaderOffset > $previous->localHeaderOffset;
+    }
+
+    private function writeStaged(ZipWriter $writer, string $entryName): void
+    {
+        $contents = $this->resolveStaged($entryName);
+        $compress = !isset($this->stored[$entryName]);
+        if (is_string($contents)) {
+            $writer->addString($entryName, $contents, $compress);
+
+            return;
+        }
+
+        $stream = $contents->openStream($entryName);
+
+        try {
+            $writer->addStream($entryName, $stream, $compress);
+        } finally {
+            fclose($stream);
         }
     }
 
@@ -484,6 +550,9 @@ final class ZipContainer implements ContainerInterface
 
     private function closeSourceArchive(): void
     {
+        $this->sourceReader?->close();
+        $this->sourceReader = null;
+
         if ($this->sourceArchive === null) {
             return;
         }
@@ -491,6 +560,15 @@ final class ZipContainer implements ContainerInterface
         $archive = $this->sourceArchive;
         $this->sourceArchive = null;
         $archive->close();
+    }
+
+    private function sourceReader(): ZipReader
+    {
+        if ($this->sourceFilename === null) {
+            throw new OpenXmlException('Package has no source ZIP archive.');
+        }
+
+        return $this->sourceReader ??= new ZipReader($this->sourceFilename);
     }
 
     private function assertWriteWithinLimits(string $name, int $contentsBytes): void

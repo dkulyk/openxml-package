@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace DK\OpenXml\Tests;
 
 use DK\OpenXml\OpenXmlPackage;
+use DK\OpenXml\Tests\Support\ArchiveAssertions;
 use PHPUnit\Framework\TestCase;
 
 final class LibreOfficeInteropTest extends TestCase
 {
+    use ArchiveAssertions;
+
     private string $directory;
 
     protected function setUp(): void
@@ -52,6 +55,7 @@ final class LibreOfficeInteropTest extends TestCase
         $package = OpenXmlPackage::open($source);
         self::assertNotEmpty(iterator_to_array($package->getParts()));
         $package->saveAs($rewritten);
+        self::assertArchiveConsistent($rewritten);
 
         $outputDirectory = $this->directory . '/output';
         self::assertTrue(mkdir($outputDirectory, 0700));

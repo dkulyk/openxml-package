@@ -144,7 +144,7 @@ final class CentralDirectoryTest extends TestCase
         ];
         yield 'more records than the directory holds' => [
             (new ZipFixture())->add('word/document.xml')->withDeclaredEntryCount(9),
-            'The ZIP directory is corrupt',
+            'The ZIP archive is corrupt',
         ];
     }
 

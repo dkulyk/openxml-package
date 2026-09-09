@@ -299,6 +299,43 @@ OpenXmlPackage::edit('document.docx', function (OpenXmlPackage $package): void {
 });
 ```
 
+## Writing to a stream
+
+`saveTo()` writes the package to an open stream, which need not be seekable, so
+a download needs no temporary file and its first bytes leave before the rest of
+the package is assembled:
+
+```php
+header('Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+header('Content-Disposition: attachment; filename="document.docx"');
+
+$output = fopen('php://output', 'wb');
+if ($output === false) {
+    throw new RuntimeException('Unable to open the output stream.');
+}
+
+$package->saveTo($output);
+fclose($output);
+```
+
+The package is validated first, as it is for `save()`, and is otherwise left
+alone: its source is not replaced, staged edits stay staged, and it remains
+usable afterwards. Nothing is read back and verified either, because no
+original file is at risk.
+
+A part whose size is not known before it is written needs the archive to be
+revisited once its bytes are counted. On a seekable destination the entry's
+local header is patched; on one that cannot seek the sizes follow the data in a
+descriptor instead, which every ZIP reader understands. Such an entry cannot be
+carried compressed into a later save as part of a copied run, so it is rewritten
+with a header of its own the next time the package is saved, and the descriptor
+is gone from that output. Saving to a file therefore keeps producing exactly
+what it did before.
+
+A custom stream wrapper that cannot seek must report `seekable` as `false` from
+its metadata. Userland wrappers report `true` by default; one that then refuses
+to seek raises `OpenXmlException` rather than producing a damaged archive.
+
 ## Public API
 
 ### `OpenXmlPackage`
@@ -334,6 +371,7 @@ OpenXmlPackage::edit('document.docx', function (OpenXmlPackage $package): void {
 | `discardChanges(): void` | Restore the source package or reset a new package. |
 | `save(): void` | Atomically replace the opened source. |
 | `saveAs(string $filename): void` | Atomically write to another path. |
+| `saveTo($stream): void` | Write to an open stream, which need not be seekable. |
 
 Relationship parts are readable through `getPart()` and the raw part access
 methods below, but their contents cannot be replaced through `PartInterface` or

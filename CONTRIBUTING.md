@@ -68,6 +68,13 @@ memory retained after the operation (five-run medians, construction excluded):
 XDEBUG_MODE=off composer benchmark-relationships
 ```
 
+Compare sending a package through a pipe with writing a temporary file and
+copying it out, reporting both the total and the time to the first byte:
+
+```shell
+XDEBUG_MODE=off composer benchmark-stream-save
+```
+
 Run the optional LibreOffice interoperability test with:
 
 ```shell

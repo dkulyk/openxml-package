@@ -42,4 +42,7 @@ interface ContainerInterface
     public function move(string $source, string $destination): void;
 
     public function saveAs(string $filename): void;
+
+    /** @param resource $destination */
+    public function writeTo($destination): void;
 }

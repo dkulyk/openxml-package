@@ -971,6 +971,28 @@ final class OpenXmlPackage implements PackageInterface
         $this->persist($this->sourceFilename, $this->sourceState);
     }
 
+    /**
+     * Writes the package to an open stream, which need not be seekable, so a
+     * package can go straight to `php://output` without a temporary file.
+     *
+     * The package keeps its source and its pending edits: nothing is replaced,
+     * and unlike save() and saveAs() the result is not read back and verified,
+     * because there is no original for a bad write to destroy.
+     *
+     * @param resource $stream
+     */
+    public function saveTo($stream): void
+    {
+        $issues = $this->validate();
+        if ($issues !== []) {
+            throw new PackageValidationException($issues);
+        }
+
+        $container = $this->container();
+        $container->write('[Content_Types].xml', $this->contentTypes->toXml());
+        $container->writeTo($stream);
+    }
+
     public function saveAs(string $filename): void
     {
         $resolvedDestination = realpath($filename);

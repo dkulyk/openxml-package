@@ -133,6 +133,25 @@ final class StreamedSaveTest extends TestCase
     }
 
     /**
+     * Writing a short archive over a longer file has to leave the file the length
+     * of the archive; a tail past the central directory reads as damage.
+     */
+    public function testAShorterArchiveCutsBackADestinationThatHeldMore(): void
+    {
+        file_put_contents($this->filename, str_repeat('O', 100 * 1024));
+        $destination = fopen($this->filename, 'r+b');
+        self::assertNotFalse($destination);
+
+        self::package()->saveTo($destination);
+        fclose($destination);
+
+        clearstatcache(true, $this->filename);
+        self::assertLessThan(100 * 1024, filesize($this->filename));
+        self::assertArchiveConsistent($this->filename);
+        self::assertSame(str_repeat('payload', 4096), self::archiveContents($this->filename, 'media/payload.bin'));
+    }
+
+    /**
      * An append stream writes at the end of the file whatever fseek() was told,
      * so patching a local header would append twelve bytes instead of replacing
      * them and leave an archive ext-zip reports as inconsistent.

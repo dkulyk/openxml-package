@@ -339,6 +339,9 @@ file whatever `fseek()` was told, so neither a patched header nor an entry offse
 would be where the archive says it is. Open the destination with `w`, `x` or `c`.
 Writing starts at the stream's current position, so a destination that already
 holds bytes still gets entry offsets that point where the entries really are.
+A seekable destination that held more than the archive needs is cut back to the
+end of what was written, because bytes past the central directory read as a
+damaged archive; anything before the starting position is kept.
 
 A custom stream wrapper that cannot seek must report `seekable` as `false` from
 its metadata. Userland wrappers report `true` by default; one that then refuses

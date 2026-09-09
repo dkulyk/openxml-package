@@ -271,6 +271,13 @@ final class ZipWriter
             $zip64 ? self::SENTINEL_32 : $directoryOffset,
             0,
         ), 'central directory');
+
+        // Anything the destination already held past this point would sit after
+        // the central directory, where a reader reports a damaged archive.
+        $stat = $this->seekable ? @fstat($this->handle) : false;
+        if (is_array($stat) && $stat['size'] > $this->position && !@ftruncate($this->handle, $this->position)) {
+            throw new OpenXmlException('Unable to cut the destination back to the end of the package.');
+        }
     }
 
     private static function deflated(\DeflateContext $context, string $chunk, int $flush, string $name): string

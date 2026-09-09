@@ -34,12 +34,17 @@ caller that wants one entry does not pay for the rest: opening a package walks
 the whole directory to build its entry map and apply the limits that only make
 sense over all of it, while file-format detection stops at the first match.
 Nothing the archive declares is trusted before it is checked against the file
-size. Entry contents are still read through ext-zip.
+size. Entry contents are decoded by the same code, in bounded chunks: a part is
+never held in memory in full unless the caller asks for it as a string, and the
+decoder stops the moment a part produces more bytes than its directory record
+declares. A part is accepted only when its decompressed size, its checksum and
+the number of compressed bytes the decoder consumed all match that record.
 
-Streamed writes are staged in temporary storage. Reads of unchanged entries use
-native lazy ZIP streams. A container opens its source archive once, shares it
-between active entry streams, and is retained by each stream context until the
-caller closes it. Complete output is validated in a same-directory temporary
+Streamed writes are staged in temporary storage. Reads of unchanged entries go
+through a stream wrapper over the decoder, so a part is decoded as it is read.
+The wrapper reads forward and rewinds; it does not seek elsewhere. A container
+opens its source archive once, shares it between active entry streams, and is
+retained by each stream context until the caller closes it. Complete output is validated in a same-directory temporary
 file before atomic replacement.
 
 A save writes the output archive itself. Unchanged entries keep their compressed

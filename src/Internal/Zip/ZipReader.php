@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DK\OpenXml\Internal\Zip;
 
 use DK\OpenXml\Exception\OpenXmlException;
+use DK\OpenXml\Security\PackageLimits;
 
 /**
  * Reads an archive's raw bytes. Sizes and CRC always come from the central
@@ -25,7 +26,58 @@ final class ZipReader
     /** @var array<string, int> */
     private array $dataOffsets = [];
 
-    public function __construct(private readonly string $filename) {}
+    public function __construct(
+        private readonly string $filename,
+        private readonly PackageLimits $limits = new PackageLimits(),
+    ) {}
+
+    /**
+     * The archive's directory, one entry at a time.
+     *
+     * @return \Generator<int, Entry>
+     */
+    public function entries(): \Generator
+    {
+        $handle = $this->handle();
+        $stat = fstat($handle);
+        if ($stat === false) {
+            throw new OpenXmlException(sprintf('Unable to size package "%s".', $this->filename));
+        }
+
+        yield from CentralDirectory::scan(
+            $handle,
+            CentralDirectory::locate($handle, $stat['size'], $this->limits),
+            $this->limits,
+        );
+    }
+
+    /** The entry's contents, decoded and checked against what its directory declares. */
+    public function read(Entry $entry, string $reportedName): string
+    {
+        $inflater = new EntryInflater($this, $entry, $reportedName);
+        $contents = '';
+        while (!$inflater->finished()) {
+            $contents .= $inflater->next();
+        }
+
+        return $contents;
+    }
+
+    /**
+     * A stream that decodes the entry as it is read.
+     *
+     * @return resource
+     */
+    public function openStream(Entry $entry, string $reportedName)
+    {
+        return InflateStream::open($this, $entry, $reportedName);
+    }
+
+    /** Raw bytes from inside an entry's compressed data, with no decoding. */
+    public function readRaw(Entry $entry, int $offset, int $length): string
+    {
+        return Binary::read($this->handle(), $length, $this->dataOffset($entry) + $offset);
+    }
 
     public function __destruct()
     {

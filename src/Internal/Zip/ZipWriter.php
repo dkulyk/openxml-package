@@ -47,6 +47,8 @@ final class ZipWriter
      * and every byte of the archive goes through this writer anyway. It starts
      * where the stream already is, so a destination that already holds bytes
      * still gets offsets a reader can follow.
+     *
+     * @var int<0, max>
      */
     private int $position;
 
@@ -61,7 +63,7 @@ final class ZipWriter
     {
         $this->seekable = stream_get_meta_data($handle)['seekable'];
         $position = ftell($handle);
-        $this->position = $position === false ? 0 : $position;
+        $this->position = $position === false ? 0 : max(0, $position);
     }
 
     /**
@@ -83,7 +85,7 @@ final class ZipWriter
             $this->assertRepresentable($entry->name, $entry->uncompressedSize, $entry->compressedSize);
         }
         $reader->copyRange($start, $end - $start, $this->handle, sprintf('entry "%s"', $first->name));
-        $this->position += $end - $start;
+        $this->advanceBy($end - $start);
 
         foreach ($entries as $entry) {
             $this->record(
@@ -115,7 +117,7 @@ final class ZipWriter
             $entry->dosDate,
         );
         $reader->copyRawTo($entry, $this->handle);
-        $this->position += $entry->compressedSize;
+        $this->advanceBy($entry->compressedSize);
         $this->record(
             $name,
             $entry->method,
@@ -395,6 +397,17 @@ final class ZipWriter
         return $length;
     }
 
+    /**
+     * Account for bytes the reader copied into the handle itself, which never
+     * passed through write(). A ZIP length is never negative; the archive would
+     * already be unreadable if one were.
+     */
+    private function advanceBy(int $length): void
+    {
+        $this->position += max(0, $length);
+    }
+
+    /** @return int<0, max> */
     private function position(): int
     {
         return $this->position;

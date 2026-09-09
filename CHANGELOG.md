@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking:** `ext-zip` is no longer required. The runtime now needs PHP 8.1,
+  `ext-dom` and `ext-zlib`; the public API is unchanged, and CI runs an
+  end-to-end check on a build with the extension disabled.
+
 ### Changed
 
 - Validation, repair, inbound-reference lookup, part moves/removal, and signature removal

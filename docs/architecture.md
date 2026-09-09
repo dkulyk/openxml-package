@@ -72,9 +72,9 @@ the payload again, and a `StagedFile` outlives the part it was staged for as lon
 as a reader holds it.
 
 Unchanged ZIP-backed parts can expose a native `zip://` URI to deferred
-path-based consumers, and a part staged from a local path exposes that path. When
-neither applies, the internal materialization pool copies the entry to private
-temporary storage. This pool is an implementation detail: callers receive
+path-based consumers where the ZIP extension is installed, and a part staged from
+a local path exposes that path. When neither applies, the internal
+materialization pool copies the entry to private temporary storage. This pool is an implementation detail: callers receive
 ordinary strings, and the package owns their lifetime.
 
 The internal boundary allows container infrastructure to move into a shared

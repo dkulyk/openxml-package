@@ -209,7 +209,9 @@ $writer->setImagePath($image->getReadablePath());
 ```
 
 For an unchanged part in an opened ZIP, this normally returns a `zip://` URI and
-avoids copying the entry before the consumer reads it. A part added from a local
+avoids copying the entry before the consumer reads it. That URI comes from the
+ZIP extension, which the library no longer requires; where the extension is
+absent the part is materialized instead, and callers see a local path. A part added from a local
 path returns that file, since the package is already reading the part from it.
 Everything else is materialized automatically. Use `getLocalPath()` when the
 consumer specifically requires a real local filesystem path.

@@ -10,11 +10,12 @@ All notable changes to this project will be documented in this file. The format 
   document's encoding. The check scanned the raw bytes for `<!DOCTYPE`, which a
   UTF-16 document hides behind a high byte after every character, so such a
   package was accepted and its internal entities substituted into attribute and
-  element values. The parsed document is asked for its doctype instead. Reading
+  element values. Known XML byte encodings are checked before parsing, and the
+  parsed document is still asked for its doctype as defence in depth. This avoids
+  spending CPU and memory on internal entity substitution before rejection. Reading
   external entities and expanding entities beyond libxml's own amplification
   limit were already refused, so no file disclosure or expansion attack was
-  reachable through the gap. Dropping the byte scan also makes parsing a
-  content-types part of 20000 overrides about 4 percent faster.
+  reachable through the original encoding gap.
 
 ## [0.11.0] - 2026-09-09
 

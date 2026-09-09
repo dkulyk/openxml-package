@@ -6,6 +6,7 @@ namespace DK\OpenXml\Internal\Encryption;
 
 use DK\OpenXml\Exception\InvalidEncryptedPackageException;
 use DK\OpenXml\Exception\UnsupportedEncryptionException;
+use DK\OpenXml\Internal\XmlDocument;
 
 /** @internal */
 final class AgileEncryptionInfo
@@ -47,6 +48,9 @@ final class AgileEncryptionInfo
         }
 
         $xml = substr($contents, 8);
+        if (XmlDocument::hasDtdDeclaration($xml)) {
+            throw new InvalidEncryptedPackageException('DTD declarations are not allowed in EncryptionInfo.');
+        }
         $document = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
 
@@ -59,8 +63,7 @@ final class AgileEncryptionInfo
             libxml_use_internal_errors($previous);
         }
 
-        // See XmlDocument::load(): a byte-level scan for `<!DOCTYPE` misses a
-        // UTF-16 document, so the parsed tree is what gets asked.
+        // Keep the parsed-tree check for encodings not recognized by the preflight.
         if ($document->doctype !== null) {
             throw new InvalidEncryptedPackageException('DTD declarations are not allowed in EncryptionInfo.');
         }

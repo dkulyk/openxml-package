@@ -21,6 +21,9 @@ final class XmlDocument
         "\x00<\x00\x00\x00!\x00\x00\x00D\x00\x00\x00O\x00\x00\x00C\x00\x00\x00T\x00\x00\x00Y\x00\x00\x00P\x00\x00\x00E\x00\x00",
     ];
 
+    /** `<?xm` in EBCDIC, which libxml recognizes and decodes wherever iconv is present. */
+    private const EBCDIC_PREFIX = "\x4C\x6F\xA7\x94";
+
     private function __construct() {}
 
     /**
@@ -64,6 +67,13 @@ final class XmlDocument
             ));
         }
 
+        // Refused as an encoding rather than spelled out as a seventh DOCTYPE
+        // signature: EBCDIC is ASCII-incompatible and holds no zero bytes, so it
+        // passes the preflight below, and no OPC package is written in it.
+        if (self::isEbcdicEncoded($xml)) {
+            throw new OpenXmlException('Package XML must be UTF-8 or UTF-16.');
+        }
+
         if (self::hasDtdDeclaration($xml)) {
             throw new OpenXmlException('DTD declarations are not allowed in package XML.');
         }
@@ -95,6 +105,15 @@ final class XmlDocument
         }
 
         return $document;
+    }
+
+    /**
+     * Detect the one encoding libxml accepts that the DTD preflight cannot see:
+     * EBCDIC carries neither ASCII text nor the zero bytes a wide encoding pads with.
+     */
+    public static function isEbcdicEncoded(string $xml): bool
+    {
+        return str_starts_with($xml, self::EBCDIC_PREFIX);
     }
 
     /** Detect a DTD before libxml can spend time expanding its internal entities. */

@@ -48,6 +48,9 @@ final class AgileEncryptionInfo
         }
 
         $xml = substr($contents, 8);
+        if (XmlDocument::isEbcdicEncoded($xml)) {
+            throw new InvalidEncryptedPackageException('EncryptionInfo must be UTF-8 or UTF-16.');
+        }
         if (XmlDocument::hasDtdDeclaration($xml)) {
             throw new InvalidEncryptedPackageException('DTD declarations are not allowed in EncryptionInfo.');
         }

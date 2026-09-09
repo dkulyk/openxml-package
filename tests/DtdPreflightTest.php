@@ -60,6 +60,46 @@ final class DtdPreflightTest extends TestCase
     }
 
     /**
+     * EBCDIC is the one encoding libxml decodes that the DTD preflight cannot see:
+     * it is ASCII-incompatible, so the literal never appears, and it pads with no
+     * zero bytes, so the wide signatures never match either. Refusing the encoding
+     * keeps libxml from expanding the document's entities before it is rejected.
+     */
+    public function testEbcdicPackageXmlIsRejectedWithoutParsing(): void
+    {
+        $xml = self::ebcdicDocument();
+        self::assertFalse(XmlDocument::hasDtdDeclaration($xml));
+
+        $this->expectException(OpenXmlException::class);
+        $this->expectExceptionMessage('Package XML must be UTF-8 or UTF-16.');
+        ContentTypes::fromXml($xml);
+    }
+
+    public function testEbcdicEncryptionInfoIsRejectedWithoutParsing(): void
+    {
+        $this->expectException(InvalidEncryptedPackageException::class);
+        $this->expectExceptionMessage('EncryptionInfo must be UTF-8 or UTF-16.');
+        AgileEncryptionInfo::fromStream(pack('vvV', 4, 4, 0x40) . self::ebcdicDocument(), 1_000_000);
+    }
+
+    /**
+     * `<?xml version="1.0"?><!DOCTYPE Types><Types xmlns="...content-types"/>`
+     * in IBM037. Kept as bytes so the tests need no iconv.
+     */
+    private static function ebcdicDocument(): string
+    {
+        $bytes = hex2bin(
+            '4c6fa7949340a58599a28996957e7ff14bf07f6f6e4c5ac4d6c3e3e8d7c540e3'
+            . 'a89785a26e4ce3a89785a240a7949395a27e7f88a3a3977a6161a28388859481'
+            . 'a24b96978595a794938696999481a3a24b969987619781839281878561f2f0f0'
+            . 'f661839695a38595a360a3a89785a27f616e',
+        );
+        self::assertNotFalse($bytes);
+
+        return $bytes;
+    }
+
+    /**
      * Encode ASCII according to byte positions that contain zeros (1) or the byte (0).
      *
      * @param non-empty-list<0|1> $layout

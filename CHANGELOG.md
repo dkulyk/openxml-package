@@ -15,7 +15,13 @@ All notable changes to this project will be documented in this file. The format 
   spending CPU and memory on internal entity substitution before rejection. Reading
   external entities and expanding entities beyond libxml's own amplification
   limit were already refused, so no file disclosure or expansion attack was
-  reachable through the original encoding gap.
+  reachable through the original encoding gap. Package XML and `EncryptionInfo`
+  written in EBCDIC are refused outright: libxml decodes that encoding, but it
+  is neither ASCII-compatible nor zero-padded, so no byte signature can see a
+  DTD through it, and no OPC package uses it. Rejecting an 8.6 MiB document of
+  three million entity references costs 0.1 ms and no measurable memory, against
+  0.4 seconds and 300 MiB spent expanding it before the parsed document was
+  asked for its doctype.
 
 ## [0.11.0] - 2026-09-09
 

@@ -11,6 +11,7 @@ use DK\OpenXml\Exception\PackageValidationException;
 use DK\OpenXml\Exception\PartInUseException;
 use DK\OpenXml\Exception\PartNotFoundException;
 use DK\OpenXml\Exception\UnsupportedFileFormatException;
+use DK\OpenXml\Internal\Zip\InflateStream;
 use DK\OpenXml\OpenXmlPackage;
 use DK\OpenXml\Packaging\ContentCompression;
 use DK\OpenXml\Packaging\PartInterface;
@@ -357,7 +358,8 @@ final class OpenXmlPackageTest extends TestCase
         $stream = $package->getPart('/media/image.bin')->openStream();
 
         try {
-            self::assertSame('zip', stream_get_meta_data($stream)['stream_type']);
+            // Not a materialized copy: the entry decodes as the caller reads it.
+            self::assertInstanceOf(InflateStream::class, stream_get_meta_data($stream)['wrapper_data']);
             self::assertSame(str_repeat('image bytes', 1_000), stream_get_contents($stream));
         } finally {
             fclose($stream);

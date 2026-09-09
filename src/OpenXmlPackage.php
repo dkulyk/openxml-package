@@ -20,6 +20,8 @@ use DK\OpenXml\Internal\PartNameIndex;
 use DK\OpenXml\Internal\SignatureInspector;
 use DK\OpenXml\Internal\SourceFileState;
 use DK\OpenXml\Internal\Zip\CentralDirectory;
+use DK\OpenXml\Internal\Zip\Entry;
+use DK\OpenXml\Internal\Zip\ZipReader;
 use DK\OpenXml\Packaging\ContentCompression;
 use DK\OpenXml\Packaging\ContentTypes;
 use DK\OpenXml\Packaging\PackageInterface;
@@ -1151,22 +1153,26 @@ final class OpenXmlPackage implements PackageInterface
 
     private function verifyWrittenPackage(string $filename): void
     {
-        // Entries were validated when staged; only the archive structure and content
-        // types are read back. Opening the archive parses its whole directory, and
-        // the package writer puts content types first, so both are checked here.
-        $archive = new \ZipArchive();
-        if ($archive->open($filename, \ZipArchive::RDONLY) !== true) {
-            throw new OpenXmlException(sprintf('Written package "%s" cannot be opened.', $filename));
-        }
+        // Entries were validated when staged. The whole directory is read back
+        // anyway, because a directory that is right at its first record and wrong
+        // at its four hundredth is what this catches.
+        $reader = new ZipReader($filename, $this->limits);
 
         try {
-            $first = $archive->getNameIndex(0);
-            $contentTypesXml = $archive->getFromName(CentralDirectory::CONTENT_TYPES);
+            $first = null;
+            $contentTypes = null;
+            foreach ($reader->entries() as $entry) {
+                $first ??= $entry->name;
+                if ($entry->name === CentralDirectory::CONTENT_TYPES) {
+                    $contentTypes = $entry;
+                }
+            }
+            if (!$contentTypes instanceof Entry || $first !== CentralDirectory::CONTENT_TYPES) {
+                throw new OpenXmlException(sprintf('Written package "%s" has no [Content_Types].xml.', $filename));
+            }
+            $contentTypesXml = $reader->read($contentTypes, CentralDirectory::CONTENT_TYPES);
         } finally {
-            $archive->close();
-        }
-        if ($first !== CentralDirectory::CONTENT_TYPES || $contentTypesXml === false) {
-            throw new OpenXmlException(sprintf('Written package "%s" has no [Content_Types].xml.', $filename));
+            $reader->close();
         }
         ContentTypes::fromXml($contentTypesXml, $this->limits->maximumXmlBytes);
     }

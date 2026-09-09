@@ -47,8 +47,6 @@ final class ZipContainer implements ContainerInterface
     /** @var array<string, true> Staged entries written without deflate. */
     private array $stored = [];
 
-    private ?\ZipArchive $sourceArchive = null;
-
     private ?ZipReader $sourceReader = null;
 
     private int $openSourceStreams = 0;
@@ -163,28 +161,14 @@ final class ZipContainer implements ContainerInterface
         }
         $this->assertSourceUnchanged();
 
-        $declaredBytes = $this->entries[$name];
-        $contents = $this->sourceArchive()->getFromName($this->moved[$name] ?? $name, $declaredBytes + 1);
-        if ($contents === false) {
-            throw new OpenXmlException(sprintf('Unable to read ZIP entry "%s".', $name));
-        }
-        if (strlen($contents) > $declaredBytes) {
-            throw DeclaredSizeFilter::exceeded($name, $declaredBytes);
-        }
-
-        return $contents;
+        return $this->sourceReader()->read($this->sourceEntry($name), $name);
     }
 
     public function openStream(string $name)
     {
-        $stream = $this->entryStream($name);
-        if (!isset($this->staged[$name])) {
-            // Staged content is this container's own, and its recorded size is what was
-            // written; only what the source archive declares is worth distrusting.
-            DeclaredSizeFilter::attach($stream, $name, $this->entries[$name]);
-        }
-
-        return $stream;
+        // Source entries are bounded by their declared size while they decode;
+        // staged content is this container's own and needs no bound.
+        return $this->entryStream($name);
     }
 
     /** @return resource */
@@ -202,12 +186,7 @@ final class ZipContainer implements ContainerInterface
         }
         $this->assertSourceUnchanged();
 
-        $archive = $this->sourceArchive();
-        $sourceEntryName = $this->moved[$name] ?? $name;
-        $stream = $archive->getStream($sourceEntryName);
-        if ($stream === false) {
-            throw new OpenXmlException(sprintf('Unable to open ZIP entry "%s".', $name));
-        }
+        $stream = $this->sourceReader()->openStream($this->sourceEntry($name), $name);
 
         ++$this->openSourceStreams;
         $owner = new StreamOwner(function (): void {
@@ -531,35 +510,10 @@ final class ZipContainer implements ContainerInterface
         }
     }
 
-    private function sourceArchive(): \ZipArchive
-    {
-        if ($this->sourceArchive !== null) {
-            return $this->sourceArchive;
-        }
-        if ($this->sourceFilename === null) {
-            throw new OpenXmlException('Package has no source ZIP archive.');
-        }
-
-        $archive = new \ZipArchive();
-        if ($archive->open($this->sourceFilename) !== true) {
-            throw new OpenXmlException(sprintf('Unable to reopen package "%s".', $this->sourceFilename));
-        }
-
-        return $this->sourceArchive = $archive;
-    }
-
     private function closeSourceArchive(): void
     {
         $this->sourceReader?->close();
         $this->sourceReader = null;
-
-        if ($this->sourceArchive === null) {
-            return;
-        }
-
-        $archive = $this->sourceArchive;
-        $this->sourceArchive = null;
-        $archive->close();
     }
 
     private function sourceReader(): ZipReader
@@ -568,7 +522,16 @@ final class ZipContainer implements ContainerInterface
             throw new OpenXmlException('Package has no source ZIP archive.');
         }
 
-        return $this->sourceReader ??= new ZipReader($this->sourceFilename);
+        return $this->sourceReader ??= new ZipReader($this->sourceFilename, $this->limits);
+    }
+
+    /** The source archive's record for an entry, following any rename. */
+    private function sourceEntry(string $name): Entry
+    {
+        $sourceName = $this->moved[$name] ?? $name;
+
+        return $this->sourceEntries[$sourceName]
+            ?? throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $sourceName));
     }
 
     private function assertWriteWithinLimits(string $name, int $contentsBytes): void

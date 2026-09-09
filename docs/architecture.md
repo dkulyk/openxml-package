@@ -38,10 +38,15 @@ size. Entry contents are decoded by the same code, in bounded chunks: a part is
 never held in memory in full unless the caller asks for it as a string, and the
 decoder stops the moment a part produces more bytes than its directory record
 declares. A part is accepted only when its decompressed size, its checksum and
-the number of compressed bytes the decoder consumed all match that record. The
-checksum comes from zlib rather than from PHP, through the trailer of a gzip
-stream that compresses nothing: PHP computes CRC-32 a byte at a time, and on a
-part of any size that dominated everything else the reader does.
+the number of compressed bytes the decoder consumed all match that record.
+
+Checking that costs nothing beyond the decoding itself. PHP computes CRC-32 a
+byte at a time, which dominated everything else the reader did, so a deflated
+entry is handed to zlib as a gzip stream instead: gzip is the same deflate data
+between a fixed header and a trailer carrying the CRC-32 and the length, and the
+ZIP directory has already told us both. zlib checks them itself as it decodes.
+Stored entries, which have no deflate stream to wrap, and parts the library
+writes take the same checksum from the trailer of a gzip stream of their own.
 
 Streamed writes are staged in temporary storage. Reads of unchanged entries go
 through a stream wrapper over the decoder, so a part is decoded as it is read.

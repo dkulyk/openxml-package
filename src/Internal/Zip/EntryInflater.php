@@ -12,8 +12,14 @@ use DK\OpenXml\Exception\PackageLimitException;
  *
  * The size the central directory declares is enforced while the entry is being
  * decoded, not after, so a directory that understates an entry costs a reader one
- * buffer rather than the whole expansion. The CRC and both lengths are checked
- * once the entry ends.
+ * buffer rather than the whole expansion.
+ *
+ * A deflated entry is handed to zlib as a gzip stream. gzip is the same raw
+ * deflate data between a fixed ten-byte header and a trailer holding the CRC-32
+ * and the length of the contents, which is exactly what the ZIP directory already
+ * told us, so zlib checks both itself while it decodes and the decoded bytes never
+ * make a second pass for a checksum. A stored entry has no deflate stream to wrap
+ * and is checksummed directly.
  *
  * @internal
  */
@@ -23,9 +29,13 @@ final class EntryInflater
     private const METHOD_STORE = 0;
     private const METHOD_DEFLATE = 8;
 
+    /** Deflate, no flags, no timestamp, unknown operating system. */
+    private const GZIP_HEADER = "\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff";
+    private const GZIP_HEADER_LENGTH = 10;
+
     private ?\InflateContext $inflate = null;
 
-    private Crc32 $checksum;
+    private ?Crc32 $checksum = null;
 
     private int $consumed = 0;
 
@@ -49,14 +59,17 @@ final class EntryInflater
                 $entry->method,
             ));
         }
-        $this->checksum = new Crc32();
-        if ($entry->method === self::METHOD_DEFLATE) {
-            $inflate = inflate_init(ZLIB_ENCODING_RAW);
-            if ($inflate === false) {
-                throw new OpenXmlException(sprintf('Unable to decompress ZIP entry "%s".', $reportedName));
-            }
-            $this->inflate = $inflate;
+        if ($entry->method !== self::METHOD_DEFLATE) {
+            $this->checksum = new Crc32();
+
+            return;
         }
+        $inflate = inflate_init(ZLIB_ENCODING_GZIP);
+        if ($inflate === false) {
+            throw new OpenXmlException(sprintf('Unable to decompress ZIP entry "%s".', $reportedName));
+        }
+        $this->inflate = $inflate;
+        $this->inflated($inflate, self::GZIP_HEADER, ZLIB_NO_FLUSH);
     }
 
     public function finished(): bool
@@ -85,21 +98,12 @@ final class EntryInflater
             $decoded = $this->inflate === null ? $raw : $this->inflated($this->inflate, $raw, ZLIB_NO_FLUSH);
         }
 
+        $this->accept($decoded);
         if ($this->consumed >= $this->entry->compressedSize) {
             if ($this->inflate !== null) {
-                // A stream that already ended must not be finished again: zlib
-                // reports a buffer error for it and forgets how much it read.
-                if (inflate_get_status($this->inflate) !== ZLIB_STREAM_END) {
-                    $decoded .= $this->inflated($this->inflate, '', ZLIB_FINISH);
-                }
-                $this->status = inflate_get_status($this->inflate);
-                $this->readLength = inflate_get_read_len($this->inflate);
+                $this->closeGzip($this->inflate);
             }
             $this->finished = true;
-        }
-
-        $this->accept($decoded);
-        if ($this->finished) {
             $this->verify();
         }
 
@@ -119,7 +123,32 @@ final class EntryInflater
                 $this->entry->uncompressedSize,
             ));
         }
-        $this->checksum->update($decoded);
+        $this->checksum?->update($decoded);
+    }
+
+    /**
+     * Hand zlib the trailer the ZIP directory describes and let it judge the entry.
+     *
+     * The trailer goes in a call of its own, after every compressed byte has been
+     * accepted, so a rejection here can only be the check itself failing.
+     */
+    private function closeGzip(\InflateContext $context): void
+    {
+        $this->readLength = inflate_get_read_len($context) - self::GZIP_HEADER_LENGTH;
+        if ($this->readLength !== $this->consumed) {
+            throw $this->corrupt('it carries data past the end of its compressed stream');
+        }
+        if ($this->produced !== $this->entry->uncompressedSize) {
+            // zlib would reject the trailer for this too, but the directory told us
+            // the length and a reader deserves to hear which of the two is wrong.
+            throw $this->corrupt('it is shorter than its directory declares');
+        }
+
+        $trailer = pack('V', $this->entry->crc) . pack('V', $this->entry->uncompressedSize & 0xFFFFFFFF);
+        if (@inflate_add($context, $trailer, ZLIB_NO_FLUSH) === false) {
+            throw $this->corrupt('its checksum does not match its directory');
+        }
+        $this->status = inflate_get_status($context);
     }
 
     private function verify(): void
@@ -131,11 +160,10 @@ final class EntryInflater
             if ($this->status !== ZLIB_STREAM_END) {
                 throw $this->corrupt('its compressed data ends early');
             }
-            if ($this->readLength !== $this->consumed) {
-                throw $this->corrupt('it carries data past the end of its compressed stream');
-            }
+
+            return;
         }
-        if ($this->checksum->value() !== $this->entry->crc) {
+        if ($this->checksum?->value() !== $this->entry->crc) {
             throw $this->corrupt('its checksum does not match its directory');
         }
     }

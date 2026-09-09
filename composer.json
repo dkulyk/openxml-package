@@ -50,6 +50,7 @@
     "scripts": {
         "test": "phpunit",
         "benchmark": "php tools/benchmark.php",
+        "benchmark-open": "php tools/benchmark-open.php",
         "benchmark-removal": "php tools/benchmark-removal.php",
         "benchmark-staged-streams": "php tools/benchmark-staged-streams.php",
         "benchmark-relationships": "php tools/benchmark-relationships.php",

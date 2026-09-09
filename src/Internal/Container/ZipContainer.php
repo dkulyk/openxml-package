@@ -8,6 +8,8 @@ use DK\OpenXml\Exception\OpenXmlException;
 use DK\OpenXml\Exception\PackageLimitException;
 use DK\OpenXml\Internal\SourceFileState;
 use DK\OpenXml\Internal\StreamOwner;
+use DK\OpenXml\Internal\Zip\CentralDirectory;
+use DK\OpenXml\Internal\Zip\EntryName;
 use DK\OpenXml\Security\PackageLimits;
 
 /** @internal */
@@ -62,58 +64,51 @@ final class ZipContainer implements ContainerInterface
             $filename = $resolvedFilename;
         }
         $sourceState ??= SourceFileState::capture($filename);
-        $archive = new \ZipArchive();
-        if ($archive->open($filename) !== true) {
+        $handle = fopen($filename, 'rb');
+        if ($handle === false) {
             throw new OpenXmlException(sprintf('Unable to open package "%s".', $filename));
         }
 
+        $container = new self($limits, $filename);
+
         try {
-            if ($archive->numFiles > $limits->maximumEntries) {
-                throw new PackageLimitException(sprintf(
-                    'Package contains %d entries; the configured maximum is %d.',
-                    $archive->numFiles,
-                    $limits->maximumEntries,
-                ));
-            }
-
-            $container = new self($limits, $filename);
+            $eocd = CentralDirectory::locate($handle, self::sizeOf($handle, $filename), $limits);
             $totalBytes = 0;
-            for ($index = 0; $index < $archive->numFiles; ++$index) {
-                $entry = $archive->statIndex($index);
-                if ($entry === false) {
-                    throw new OpenXmlException(sprintf('Unable to inspect ZIP entry at index %d.', $index));
+            foreach (CentralDirectory::scan($handle, $eocd, $limits) as $entry) {
+                if (isset($container->entries[$entry->name])) {
+                    throw new OpenXmlException(sprintf('Duplicate ZIP entry "%s".', $entry->name));
                 }
-                $name = $entry['name'];
-                if (str_ends_with($name, '/')) {
-                    continue;
-                }
-
-                self::assertSafeEntryName($name);
-                if (isset($container->entries[$name])) {
-                    throw new OpenXmlException(sprintf('Duplicate ZIP entry "%s".', $name));
-                }
-                self::assertEntryWithinLimits($name, $entry['size'], $entry['comp_size'], $limits);
-                $totalBytes += $entry['size'];
+                $totalBytes += $entry->uncompressedSize;
                 if ($totalBytes > $limits->maximumPackageBytes) {
                     throw new PackageLimitException(sprintf(
                         'Package expands beyond the configured maximum of %d bytes.',
                         $limits->maximumPackageBytes,
                     ));
                 }
-                $container->setEntry($name, $entry['size']);
+                $container->setEntry($entry->name, $entry->uncompressedSize);
             }
-
-            $sourceState->assertUnchanged();
-            $container->sourceState = $sourceState;
-            $container->sourceArchive = $archive;
-            SourceArchiveRegistry::register($filename, $container);
-
-            return $container;
-        } catch (\Throwable $exception) {
-            $archive->close();
-
-            throw $exception;
+        } finally {
+            fclose($handle);
         }
+
+        $sourceState->assertUnchanged();
+        $container->sourceState = $sourceState;
+        SourceArchiveRegistry::register($filename, $container);
+
+        return $container;
+    }
+
+    /**
+     * @param resource $handle
+     */
+    private static function sizeOf($handle, string $filename): int
+    {
+        $stat = fstat($handle);
+        if ($stat === false) {
+            throw new OpenXmlException(sprintf('Unable to open package "%s".', $filename));
+        }
+
+        return $stat['size'];
     }
 
     public function has(string $name): bool
@@ -608,44 +603,7 @@ final class ZipContainer implements ContainerInterface
 
     private static function assertSafeEntryName(string $name): void
     {
-        $segments = explode('/', $name);
-        if (
-            $name === ''
-            || str_starts_with($name, '/')
-            || str_contains($name, '\\')
-            || str_contains($name, "\0")
-            || in_array('', $segments, true)
-            || in_array('.', $segments, true)
-            || in_array('..', $segments, true)
-        ) {
-            throw new OpenXmlException(sprintf('Unsafe ZIP entry name "%s".', $name));
-        }
-    }
-
-    private static function assertEntryWithinLimits(
-        string $entryName,
-        int $uncompressedBytes,
-        int $compressedBytes,
-        PackageLimits $limits,
-    ): void {
-        if ($uncompressedBytes > $limits->maximumPartBytes) {
-            throw new PackageLimitException(sprintf(
-                'Part "%s" expands to %d bytes; the configured maximum is %d.',
-                $entryName,
-                $uncompressedBytes,
-                $limits->maximumPartBytes,
-            ));
-        }
-        $compressionRatio = $compressedBytes === 0
-            ? ($uncompressedBytes === 0 ? 1.0 : INF)
-            : $uncompressedBytes / $compressedBytes;
-        if ($compressionRatio > $limits->maximumCompressionRatio) {
-            throw new PackageLimitException(sprintf(
-                'Part "%s" has a suspicious compression ratio of %.2f.',
-                $entryName,
-                $compressionRatio,
-            ));
-        }
+        EntryName::assertSafe($name);
     }
 
     private function assertSourceUnchanged(): void

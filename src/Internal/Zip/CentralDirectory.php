@@ -175,7 +175,7 @@ final class CentralDirectory
                 $record['offset'],
             );
 
-            EntryName::assertSafe($name);
+            Entry::assertSafeName($name);
             if (($record['flags'] & self::FLAG_ENCRYPTED) !== 0 || $record['method'] === self::METHOD_AES) {
                 throw new OpenXmlException(sprintf('ZIP entry "%s" is encrypted.', $name));
             }

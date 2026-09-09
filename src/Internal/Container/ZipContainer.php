@@ -10,7 +10,6 @@ use DK\OpenXml\Internal\SourceFileState;
 use DK\OpenXml\Internal\StreamOwner;
 use DK\OpenXml\Internal\Zip\CentralDirectory;
 use DK\OpenXml\Internal\Zip\Entry;
-use DK\OpenXml\Internal\Zip\EntryName;
 use DK\OpenXml\Internal\Zip\InflateStream;
 use DK\OpenXml\Internal\Zip\ZipReader;
 use DK\OpenXml\Internal\Zip\ZipWriter;
@@ -259,7 +258,7 @@ final class ZipContainer implements ContainerInterface
 
     public function write(string $name, string $contents, bool $compress = true): void
     {
-        self::assertSafeEntryName($name);
+        Entry::assertSafeName($name);
         $this->assertWriteWithinLimits($name, strlen($contents));
         $this->staged[$name] = $contents;
         $this->setEntry($name, strlen($contents));
@@ -269,7 +268,7 @@ final class ZipContainer implements ContainerInterface
 
     public function writeLazy(string $name, \Closure $contents): void
     {
-        self::assertSafeEntryName($name);
+        Entry::assertSafeName($name);
         // Size is unknown until produced; entry-count limits apply now, byte limits in resolveStaged().
         if (!$this->has($name) && $this->liveEntryCount >= $this->limits->maximumEntries) {
             throw new PackageLimitException(sprintf(
@@ -292,7 +291,7 @@ final class ZipContainer implements ContainerInterface
         if (!str_contains($metadata['mode'], 'r') && !str_contains($metadata['mode'], '+')) {
             throw new \InvalidArgumentException('Part contents stream is not readable.');
         }
-        self::assertSafeEntryName($name);
+        Entry::assertSafeName($name);
         if ($this->carry($name, $stream, $compress)) {
             return;
         }
@@ -378,7 +377,7 @@ final class ZipContainer implements ContainerInterface
 
     public function writePath(string $name, string $path, bool $compress = true): void
     {
-        self::assertSafeEntryName($name);
+        Entry::assertSafeName($name);
         $resolved = realpath($path);
         if ($resolved === false || !is_file($resolved) || !is_readable($resolved)) {
             throw new OpenXmlException(sprintf('Local file "%s" is not readable.', $path));
@@ -421,8 +420,8 @@ final class ZipContainer implements ContainerInterface
 
     public function move(string $source, string $destination): void
     {
-        self::assertSafeEntryName($source);
-        self::assertSafeEntryName($destination);
+        Entry::assertSafeName($source);
+        Entry::assertSafeName($destination);
         if (!$this->has($source)) {
             throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $source));
         }
@@ -692,11 +691,6 @@ final class ZipContainer implements ContainerInterface
             }
             $offset += $written;
         }
-    }
-
-    private static function assertSafeEntryName(string $name): void
-    {
-        EntryName::assertSafe($name);
     }
 
     private function assertSourceUnchanged(): void

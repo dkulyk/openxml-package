@@ -56,6 +56,7 @@
         "benchmark-copy": "php tools/benchmark-copy.php",
         "benchmark-removal": "php tools/benchmark-removal.php",
         "benchmark-staged-streams": "php tools/benchmark-staged-streams.php",
+        "benchmark-stream-save": "php tools/benchmark-stream-save.php",
         "benchmark-relationships": "php tools/benchmark-relationships.php",
         "lint": "php tools/lint.php",
         "analyse": "phpstan analyse --no-progress --debug --memory-limit=512M",

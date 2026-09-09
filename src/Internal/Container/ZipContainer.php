@@ -452,55 +452,92 @@ final class ZipContainer implements ContainerInterface
 
     public function saveAs(string $filename): void
     {
-        $this->assertSourceUnchanged();
-
         $destination = fopen($filename, 'w+b');
         if ($destination === false) {
             throw new OpenXmlException(sprintf('Unable to create package "%s".', $filename));
         }
 
         try {
-            $writer = new ZipWriter($destination);
-            /** @var list<Entry> $run */
-            $run = [];
-            $flush = function () use ($writer, &$run): void {
-                if ($run !== []) {
-                    $writer->addRawRun($run, $this->sourceReader());
-                    $run = [];
-                }
-            };
-
-            foreach ($this->saveOrder() as $entryName) {
-                if (array_key_exists($entryName, $this->staged)) {
-                    $flush();
-                    $this->writeStaged($writer, $entryName);
-
-                    continue;
-                }
-                // Unchanged and moved entries keep the bytes they already have.
-                $sourceName = $this->moved[$entryName] ?? $entryName;
-                $entry = $this->sourceEntries[$sourceName] ?? null;
-                if ($entry === null) {
-                    throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $sourceName));
-                }
-                // A renamed entry needs a header of its own, and one that defers its
-                // sizes to a trailing descriptor is rewritten rather than carried.
-                if ($sourceName !== $entryName || ($entry->flags & self::FLAG_DATA_DESCRIPTOR) !== 0) {
-                    $flush();
-                    $writer->addRaw($entryName, $entry, $this->sourceReader());
-
-                    continue;
-                }
-                if ($run !== [] && !$this->adjacentInSource($run[count($run) - 1], $entry)) {
-                    $flush();
-                }
-                $run[] = $entry;
-            }
-            $flush();
-            $writer->finish();
+            $this->writeTo($destination);
         } finally {
             fclose($destination);
         }
+    }
+
+    /**
+     * Writes the archive to an already open stream. A stream that cannot seek is
+     * written just as well; entries whose size is not known in advance then carry
+     * a trailing descriptor instead of having their header patched.
+     *
+     * @param resource $destination
+     */
+    public function writeTo($destination): void
+    {
+        if (!is_resource($destination) || get_resource_type($destination) !== 'stream') {
+            throw new \InvalidArgumentException('A package must be written to a stream resource.');
+        }
+
+        // Checked before the first byte so a read-only handle fails as an argument
+        // rather than as a warning from fwrite() partway through the archive.
+        $mode = stream_get_meta_data($destination)['mode'];
+        if (strpbrk($mode, 'waxc+') === false) {
+            throw new \InvalidArgumentException(sprintf(
+                'A package must be written to a writable stream; mode "%s" is read-only.',
+                $mode,
+            ));
+        }
+
+        // A stream opened for appending puts every write at the end of the file
+        // whatever fseek() was told, and reports a position that is not where the
+        // bytes went, so neither a patched header nor an entry offset can be
+        // trusted. Refused rather than written wrongly.
+        if (str_contains($mode, 'a')) {
+            throw new \InvalidArgumentException(sprintf(
+                'A package cannot be written to a stream opened for appending; mode "%s" ignores seeks. Open the destination with "w", "x" or "c".',
+                $mode,
+            ));
+        }
+
+        $this->assertSourceUnchanged();
+
+        $writer = new ZipWriter($destination);
+        /** @var list<Entry> $run */
+        $run = [];
+        $flush = function () use ($writer, &$run): void {
+            if ($run !== []) {
+                $writer->addRawRun($run, $this->sourceReader());
+                $run = [];
+            }
+        };
+
+        foreach ($this->saveOrder() as $entryName) {
+            if (array_key_exists($entryName, $this->staged)) {
+                $flush();
+                $this->writeStaged($writer, $entryName);
+
+                continue;
+            }
+            // Unchanged and moved entries keep the bytes they already have.
+            $sourceName = $this->moved[$entryName] ?? $entryName;
+            $entry = $this->sourceEntries[$sourceName] ?? null;
+            if ($entry === null) {
+                throw new OpenXmlException(sprintf('ZIP entry "%s" does not exist.', $sourceName));
+            }
+            // A renamed entry needs a header of its own, and one that defers its
+            // sizes to a trailing descriptor is rewritten rather than carried.
+            if ($sourceName !== $entryName || ($entry->flags & self::FLAG_DATA_DESCRIPTOR) !== 0) {
+                $flush();
+                $writer->addRaw($entryName, $entry, $this->sourceReader());
+
+                continue;
+            }
+            if ($run !== [] && !$this->adjacentInSource($run[count($run) - 1], $entry)) {
+                $flush();
+            }
+            $run[] = $entry;
+        }
+        $flush();
+        $writer->finish();
     }
 
     /**

@@ -17,6 +17,8 @@ PresentationML documents.
 
 - Read, create, and atomically update OPC packages.
 - Lazily stream large images and embedded files without keeping them in PHP strings.
+- Write a package to an open stream, such as `php://output`, without staging a
+  temporary file and without waiting for the whole package before the first byte.
 - Pass unchanged parts to path-based consumers through `zip://` URIs where the ZIP
   extension is installed, with automatic package-owned local materialization when
   a native URI is unavailable.
@@ -91,7 +93,8 @@ $package->saveAs('document.docx');
 
 Changes to an opened package stay staged until `save()` or `saveAs()` succeeds.
 The destination is replaced atomically; validation and write failures leave the
-existing file untouched.
+existing file untouched. `saveTo()` writes the package to an open stream, which
+need not be seekable, and leaves the opened source and its staged edits alone.
 
 ```php
 OpenXmlPackage::edit('document.docx', function (OpenXmlPackage $package): void {

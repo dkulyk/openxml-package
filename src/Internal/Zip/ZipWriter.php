@@ -31,6 +31,9 @@ final class ZipWriter
     private const VERSION_MADE_BY = 20;
     /** Names are always written as UTF-8, which flag bit 11 declares. */
     private const FLAG_UTF8 = 0x0800;
+    /** Sizes follow the data instead of preceding it, which flag bit 3 declares. */
+    private const FLAG_DATA_DESCRIPTOR = 0x0008;
+    private const DESCRIPTOR_SIGNATURE = "PK\x07\x08";
     private const METHOD_STORE = 0;
     private const METHOD_DEFLATE = 8;
     private const LEVEL = 6;
@@ -39,8 +42,29 @@ final class ZipWriter
     /** @var list<array{name: string, method: int, flags: int, crc: int, compressedSize: int, uncompressedSize: int, dosTime: int, dosDate: int, offset: int}> */
     private array $written = [];
 
+    /**
+     * Counted rather than asked of the stream: a pipe has no position to tell,
+     * and every byte of the archive goes through this writer anyway. It starts
+     * where the stream already is, so a destination that already holds bytes
+     * still gets offsets a reader can follow.
+     *
+     * @var int<0, max>
+     */
+    private int $position;
+
+    /**
+     * A stream that cannot seek back to a local header takes the sizes it could
+     * not know in advance in a trailing descriptor instead.
+     */
+    private readonly bool $seekable;
+
     /** @param resource $handle */
-    public function __construct(private $handle) {}
+    public function __construct(private $handle)
+    {
+        $this->seekable = stream_get_meta_data($handle)['seekable'];
+        $position = ftell($handle);
+        $this->position = $position === false ? 0 : max(0, $position);
+    }
 
     /**
      * Copies entries that sit side by side in the source archive in one pass,
@@ -61,6 +85,7 @@ final class ZipWriter
             $this->assertRepresentable($entry->name, $entry->uncompressedSize, $entry->compressedSize);
         }
         $reader->copyRange($start, $end - $start, $this->handle, sprintf('entry "%s"', $first->name));
+        $this->advanceBy($end - $start);
 
         foreach ($entries as $entry) {
             $this->record(
@@ -92,6 +117,7 @@ final class ZipWriter
             $entry->dosDate,
         );
         $reader->copyRawTo($entry, $this->handle);
+        $this->advanceBy($entry->compressedSize);
         $this->record(
             $name,
             $entry->method,
@@ -136,8 +162,10 @@ final class ZipWriter
         $offset = $this->position();
         $method = $compress ? self::METHOD_DEFLATE : self::METHOD_STORE;
         [$dosTime, $dosDate] = Dos::stamp();
-        // Sizes are unknown until the stream ends; the header is patched below.
-        $this->writeLocalHeader($name, $method, 0, 0, 0, $dosTime, $dosDate);
+        // Sizes are unknown until the stream ends, so the header is either patched
+        // below or, on a stream that cannot seek, followed by a descriptor.
+        $flags = self::FLAG_UTF8 | ($this->seekable ? 0 : self::FLAG_DATA_DESCRIPTOR);
+        $this->writeLocalHeader($name, $method, 0, 0, 0, $dosTime, $dosDate, $flags);
 
         $checksum = new Crc32();
         $deflate = null;
@@ -170,9 +198,17 @@ final class ZipWriter
         }
 
         $crc = $checksum->value();
+        // Both sizes are known to fit, so the descriptor never needs its ZIP64 form.
         $this->assertRepresentable($name, $uncompressedSize, $compressedSize);
-        $this->patchLocalHeader($offset, $crc, $compressedSize, $uncompressedSize, $name);
-        $this->record($name, $method, $crc, $compressedSize, $uncompressedSize, $dosTime, $dosDate, $offset);
+        if ($this->seekable) {
+            $this->patchLocalHeader($offset, $crc, $compressedSize, $uncompressedSize, $name);
+        } else {
+            $this->write(
+                self::DESCRIPTOR_SIGNATURE . pack('VVV', $crc, $compressedSize, $uncompressedSize),
+                $name,
+            );
+        }
+        $this->record($name, $method, $crc, $compressedSize, $uncompressedSize, $dosTime, $dosDate, $offset, $flags);
     }
 
     public function finish(): void
@@ -237,6 +273,13 @@ final class ZipWriter
             $zip64 ? self::SENTINEL_32 : $directoryOffset,
             0,
         ), 'central directory');
+
+        // Anything the destination already held past this point would sit after
+        // the central directory, where a reader reports a damaged archive.
+        $stat = $this->seekable ? @fstat($this->handle) : false;
+        if (is_array($stat) && $stat['size'] > $this->position && !@ftruncate($this->handle, $this->position)) {
+            throw new OpenXmlException('Unable to cut the destination back to the end of the package.');
+        }
     }
 
     private static function deflated(\DeflateContext $context, string $chunk, int $flush, string $name): string
@@ -257,11 +300,12 @@ final class ZipWriter
         int $uncompressedSize,
         int $dosTime,
         int $dosDate,
+        int $flags = self::FLAG_UTF8,
     ): void {
         $this->write(self::LOCAL_SIGNATURE . pack(
             'vvvvvVVVvv',
             self::VERSION,
-            self::FLAG_UTF8,
+            $flags,
             $method,
             $dosTime,
             $dosDate,
@@ -281,14 +325,21 @@ final class ZipWriter
         string $name,
     ): void {
         $end = $this->position();
-        // The CRC and both sizes sit 14 bytes into the local header.
+        // The CRC and both sizes sit 14 bytes into the local header. A stream that
+        // reported itself seekable and then refuses to seek is the one way this
+        // fails; a custom wrapper that cannot seek should say so in its metadata.
         if (fseek($this->handle, $offset + 14) !== 0) {
-            throw new OpenXmlException(sprintf('Unable to finish ZIP entry "%s".', $name));
+            throw new OpenXmlException(sprintf(
+                'Unable to seek back to the header of ZIP entry "%s" in a stream that reported itself seekable.',
+                $name,
+            ));
         }
         $this->write(pack('VVV', $crc, $compressedSize, $uncompressedSize), $name);
         if (fseek($this->handle, $end) !== 0) {
             throw new OpenXmlException(sprintf('Unable to finish ZIP entry "%s".', $name));
         }
+        // This header was overwritten, not appended to the archive.
+        $this->position = $end;
     }
 
     private function record(
@@ -325,26 +376,40 @@ final class ZipWriter
         }
     }
 
+    /**
+     * A pipe or socket accepts as much as fits and reports how much that was, so
+     * the remainder is offered again until it is taken. A write that reports no
+     * progress at all ends the archive with an exception rather than a warning.
+     */
     private function write(string $bytes, string $subject): int
     {
-        if ($bytes === '') {
-            return 0;
+        $length = strlen($bytes);
+        $offset = 0;
+        while ($offset < $length) {
+            $written = @fwrite($this->handle, $offset === 0 ? $bytes : substr($bytes, $offset));
+            if ($written === false || $written === 0) {
+                throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $subject));
+            }
+            $offset += $written;
         }
-        $written = fwrite($this->handle, $bytes);
-        if ($written !== strlen($bytes)) {
-            throw new OpenXmlException(sprintf('Unable to write ZIP entry "%s".', $subject));
-        }
+        $this->position += $length;
 
-        return $written;
+        return $length;
     }
 
+    /**
+     * Account for bytes the reader copied into the handle itself, which never
+     * passed through write(). A ZIP length is never negative; the archive would
+     * already be unreadable if one were.
+     */
+    private function advanceBy(int $length): void
+    {
+        $this->position += max(0, $length);
+    }
+
+    /** @return int<0, max> */
     private function position(): int
     {
-        $position = ftell($this->handle);
-        if ($position === false) {
-            throw new OpenXmlException('Unable to determine the position in the package being written.');
-        }
-
-        return $position;
+        return $this->position;
     }
 }

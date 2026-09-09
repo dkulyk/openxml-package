@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+
+- `saveTo()` writes a package to an open stream, which need not be seekable, so
+  a download no longer needs a temporary file and its first bytes leave
+  immediately. Sending a package with a 64 MiB part through a pipe takes about
+  21 ms against about 55 ms for writing a temporary file and copying it out, and
+  its first byte arrives at once rather than after about 30 ms; `composer
+  benchmark-stream-save` reports both. An entry whose size is unknown in advance
+  carries a trailing descriptor when the destination cannot seek; a seekable
+  destination still patches the local header, so saving to a file produces the
+  same archive it did before. `PackageInterface` declares `saveTo()` alongside
+  `save()` and `saveAs()`, so a caller typed against the interface reaches it.
+
 ### Fixed
 
 - A DTD in package XML or in an `EncryptionInfo` stream is refused whatever the

@@ -68,4 +68,7 @@ interface PackageInterface
     public function save(): void;
 
     public function saveAs(string $filename): void;
+
+    /** @param resource $stream */
+    public function saveTo($stream): void;
 }

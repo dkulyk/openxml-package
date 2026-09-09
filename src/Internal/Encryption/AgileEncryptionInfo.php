@@ -47,10 +47,6 @@ final class AgileEncryptionInfo
         }
 
         $xml = substr($contents, 8);
-        if (stripos($xml, '<!DOCTYPE') !== false) {
-            throw new InvalidEncryptedPackageException('DTD declarations are not allowed in EncryptionInfo.');
-        }
-
         $document = new \DOMDocument();
         $previous = libxml_use_internal_errors(true);
 
@@ -61,6 +57,12 @@ final class AgileEncryptionInfo
         } finally {
             libxml_clear_errors();
             libxml_use_internal_errors($previous);
+        }
+
+        // See XmlDocument::load(): a byte-level scan for `<!DOCTYPE` misses a
+        // UTF-16 document, so the parsed tree is what gets asked.
+        if ($document->doctype !== null) {
+            throw new InvalidEncryptedPackageException('DTD declarations are not allowed in EncryptionInfo.');
         }
 
         $xpath = new \DOMXPath($document);

@@ -131,3 +131,26 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+  no-zip:
+    name: PHP 8.3 / no ext-zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up PHP without the zip extension
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, :zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Install runtime dependencies only
+        run: composer install --no-interaction --no-progress --prefer-dist --no-dev
+
+      - name: Run the smoke check
+        run: php tools/smoke.php

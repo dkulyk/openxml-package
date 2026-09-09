@@ -16,10 +16,10 @@
     "require": {
         "php": "^8.1",
         "ext-dom": "*",
-        "ext-zip": "*"
+        "ext-zlib": "*"
     },
     "require-dev": {
-        "ext-zlib": "*",
+        "ext-zip": "*",
         "dkulyk/compound-file": "^0.2.0",
         "friendsofphp/php-cs-fixer": "^3.88",
         "phpstan/phpstan": "^2.1",
@@ -49,6 +49,7 @@
     },
     "scripts": {
         "test": "phpunit",
+        "smoke": "php tools/smoke.php",
         "benchmark": "php tools/benchmark.php",
         "benchmark-open": "php tools/benchmark-open.php",
         "benchmark-save": "php tools/benchmark-save.php",

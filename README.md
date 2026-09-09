@@ -17,8 +17,9 @@ PresentationML documents.
 
 - Read, create, and atomically update OPC packages.
 - Lazily stream large images and embedded files without keeping them in PHP strings.
-- Pass unchanged parts to path-based consumers through `zip://` URIs, with
-  automatic package-owned local materialization when a native URI is unavailable.
+- Pass unchanged parts to path-based consumers through `zip://` URIs where the ZIP
+  extension is installed, with automatic package-owned local materialization when
+  a native URI is unavailable.
 - Navigate and modify package-level and part-level relationships.
 - Inspect OPC digital-signature parts and references without claiming cryptographic verification.
 - Explicitly remove signature material when producing an unsigned copy.
@@ -31,7 +32,10 @@ PresentationML documents.
 
 - PHP 8.1 or newer;
 - DOM extension;
-- ZIP extension.
+- zlib extension.
+
+The ZIP extension is no longer needed. The library reads and writes the archive
+itself.
 
 Encryption additionally requires the OpenSSL extension and
 [`dkulyk/compound-file:^0.2`](https://packagist.org/packages/dkulyk/compound-file).

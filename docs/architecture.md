@@ -12,6 +12,7 @@ DK\OpenXml\OpenXmlPackage
 ├── Signature\SignatureInspection / PackageSignature
 └── Internal
     ├── Container\ContainerInterface / ZipContainer
+    ├── Zip\CentralDirectory / Eocd / Entry (ZIP directory reader)
     ├── PartNameIndex
     ├── MaterializationPool
     └── SourceFileState
@@ -27,6 +28,13 @@ DK\OpenXml\Encryption\EncryptedOfficeFile
 `Packaging` is the public OPC API. `Internal\Container` hides ZIP implementation
 details and is not a compatibility surface. The container retains entry metadata
 when opening a package and loads content only when requested.
+
+`Internal\Zip` reads the ZIP central directory directly. It is a generator, so a
+caller that wants one entry does not pay for the rest: opening a package walks
+the whole directory to build its entry map and apply the limits that only make
+sense over all of it, while file-format detection stops at the first match.
+Nothing the archive declares is trusted before it is checked against the file
+size. Entry contents are still read through ext-zip.
 
 Streamed writes are staged in temporary storage. Reads of unchanged entries use
 native lazy ZIP streams. A container opens its source archive once, shares it

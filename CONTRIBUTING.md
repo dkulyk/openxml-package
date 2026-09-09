@@ -41,6 +41,13 @@ medians, with construction excluded):
 XDEBUG_MODE=off composer benchmark-removal
 ```
 
+Measure reading a package's ZIP directory, both for a full open and for format
+detection:
+
+```shell
+XDEBUG_MODE=off composer benchmark-open
+```
+
 Measure opening staged file readers separately from staging and full reads:
 
 ```shell

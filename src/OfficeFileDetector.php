@@ -10,6 +10,8 @@ use DK\OpenXml\Exception\InvalidCompoundFileException;
 use DK\OpenXml\Exception\InvalidEncryptedPackageException;
 use DK\OpenXml\Exception\MissingDependencyException;
 use DK\OpenXml\Exception\OpenXmlException;
+use DK\OpenXml\Internal\Zip\CentralDirectory;
+use DK\OpenXml\Security\PackageLimits;
 
 final class OfficeFileDetector
 {
@@ -53,15 +55,38 @@ final class OfficeFileDetector
 
     private static function hasContentTypes(string $filename): bool
     {
-        $archive = new \ZipArchive();
-        if ($archive->open($filename, \ZipArchive::RDONLY) !== true) {
+        $handle = @fopen($filename, 'rb');
+        if ($handle === false) {
             return false;
         }
 
         try {
-            return $archive->locateName('[Content_Types].xml') !== false;
+            $stat = fstat($handle);
+            if ($stat === false) {
+                return false;
+            }
+            // Detection answers a shape question. Whoever opens the package
+            // applies their own limits, so applying ours here would report a
+            // package they are configured to accept as something else.
+            $limits = new PackageLimits(
+                \PHP_INT_MAX,
+                \PHP_INT_MAX,
+                \PHP_INT_MAX,
+                \INF,
+                \PHP_INT_MAX,
+            );
+            $eocd = CentralDirectory::locate($handle, $stat['size'], $limits);
+            foreach (CentralDirectory::scan($handle, $eocd, $limits) as $entry) {
+                if ($entry->name === CentralDirectory::CONTENT_TYPES) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (OpenXmlException) {
+            return false;
         } finally {
-            $archive->close();
+            fclose($handle);
         }
     }
 

@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file. The format 
 - Validation, repair, inbound-reference lookup, part moves/removal, and signature removal
   no longer create and retain empty relationship collections for parts without
   a relationship part. Explicitly requested collections remain live and writable.
+- The ZIP central directory is read by the library instead of by ext-zip.
+  Opening a package and detecting an Office file walk it lazily; on a 4000-entry
+  package a container open goes from 8.6 ms to 4.9 ms and detection from 1.12 ms
+  to 0.05 ms. Entry contents are still read through ext-zip.
 
 ## [0.10.0] - 2026-09-07
 

@@ -20,7 +20,7 @@
     },
     "require-dev": {
         "ext-zip": "*",
-        "dkulyk/compound-file": "^0.2.0",
+        "dkulyk/compound-file": "^0.2.7 || ^0.3.0",
         "friendsofphp/php-cs-fixer": "^3.88",
         "phpstan/phpstan": "^2.1",
         "phpstan/phpstan-strict-rules": "^2.0",

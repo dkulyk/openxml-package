@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "010583b6e94650d623f4176f09d74a9c",
+    "content-hash": "1b037ab274382d530f45c2c85acee8f5",
     "packages": [],
     "packages-dev": [
         {
@@ -292,16 +292,16 @@
         },
         {
             "name": "dkulyk/compound-file",
-            "version": "v0.2.2",
+            "version": "v0.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/dkulyk/compound-file.git",
-                "reference": "22f7ac26dc579d9c0710d437a8c3171d04537649"
+                "reference": "dfb9bb6beec86a2e3003d56d31b3f69b27e07824"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/dkulyk/compound-file/zipball/22f7ac26dc579d9c0710d437a8c3171d04537649",
-                "reference": "22f7ac26dc579d9c0710d437a8c3171d04537649",
+                "url": "https://api.github.com/repos/dkulyk/compound-file/zipball/dfb9bb6beec86a2e3003d56d31b3f69b27e07824",
+                "reference": "dfb9bb6beec86a2e3003d56d31b3f69b27e07824",
                 "shasum": ""
             },
             "require": {
@@ -336,7 +336,7 @@
                 "issues": "https://github.com/dkulyk/compound-file/issues",
                 "source": "https://github.com/dkulyk/compound-file"
             },
-            "time": "2026-09-01T21:12:59+00:00"
+            "time": "2026-09-23T07:35:03+00:00"
         },
         {
             "name": "ergebnis/agent-detector",

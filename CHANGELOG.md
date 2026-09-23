@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Changed
+
+- The optional `dkulyk/compound-file` integration is tested against 0.3 and now
+  asks for `^0.2.7 || ^0.3`. The releases between 0.2.2 and 0.2.7 bound FAT
+  chains by the input size, refuse a directory entry belonging to another
+  parser instead of reading bytes from the wrong container, and close the file
+  handle when parsing fails, all of which matter for a file the caller did not
+  write. Nothing in the library calls what 0.3 adds, so either major works.
+
 ## [0.12.0] - 2026-09-09
 
 ### Added

@@ -5,7 +5,7 @@ The optional [`dkulyk/compound-file`](https://packagist.org/packages/dkulyk/comp
 dependency supplies that outer container implementation.
 
 ```shell
-composer require dkulyk/compound-file:^0.2
+composer require "dkulyk/compound-file:^0.2.7 || ^0.3"
 ```
 
 The OpenSSL PHP extension is also required for encryption and decryption.

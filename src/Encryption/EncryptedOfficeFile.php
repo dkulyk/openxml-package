@@ -153,7 +153,7 @@ final class EncryptedOfficeFile
     {
         if (!class_exists(CompoundFile::class) || !class_exists(CompoundFileWriter::class)) {
             throw new MissingDependencyException(
-                'Office encryption requires "composer require dkulyk/compound-file:^0.2".',
+                'Office encryption requires "composer require dkulyk/compound-file:^0.3.1 || ^0.4".',
             );
         }
     }

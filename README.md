@@ -40,7 +40,7 @@ The ZIP extension is no longer needed. The library reads and writes the archive
 itself.
 
 Encryption additionally requires the OpenSSL extension and
-[`dkulyk/compound-file`](https://packagist.org/packages/dkulyk/compound-file) `^0.2.7 || ^0.3`.
+[`dkulyk/compound-file`](https://packagist.org/packages/dkulyk/compound-file) `^0.3.1 || ^0.4`.
 
 ## Installation
 
@@ -51,7 +51,7 @@ composer require dkulyk/openxml-package
 For encrypted Office files, also install the optional CFBF implementation:
 
 ```shell
-composer require "dkulyk/compound-file:^0.2.7 || ^0.3"
+composer require "dkulyk/compound-file:^0.3.1 || ^0.4"
 ```
 
 ## Quick start

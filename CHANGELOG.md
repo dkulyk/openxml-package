@@ -8,9 +8,9 @@ All notable changes to this project will be documented in this file. The format 
 
 - The optional `dkulyk/compound-file` integration is tested against 0.4 and now
   asks for `^0.3.1 || ^0.4`. The floor is where the container stopped holding a
-  PHP value per sector of the file: decrypting a 160 MiB package peaks at 22 MiB
-  instead of 54 MiB, and a 64 MiB one at 12 MiB instead of 29 MiB, at the same
-  speed. Encryption of a 160 MiB package now peaks at 8 MiB. 0.4 additionally
+  PHP value per sector of the file: decrypting a 160 MiB package peaks at 21 MiB
+  instead of 52 MiB, and a 64 MiB one at 11 MiB instead of 27 MiB, in the same
+  time. Encryption of a 160 MiB package now peaks at 5 MiB. 0.4 additionally
   refuses a malformed directory entry name instead of repairing it, which is the
   behaviour we want for a file we did not write, and drops big-endian support
   and the `Header` byte-order API, neither of which this library used.
